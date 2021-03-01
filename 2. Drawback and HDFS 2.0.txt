@@ -1,0 +1,33 @@
+Problem:-
+========
+1. Hadoop is having a Single Point of Failure (Job Tracker and Name Node). If its down, Entire cluster will be down.
+
+Solution is Hadoop 2.0:-
+=========================
+
+Why we go for Hadoop 2.0?
+1.  To Overcome Single point of failure, Hadoop provides two solutions,
+	a) Federation
+	b) High Availability
+What is Federation?
+	To make a multiple Name node is called as Federation, One machine act as an Active name node and Another machine act as a Standby Name node. 
+	Suppose Active name node is down, Standby name node act as Active Name node. Suppose Second name node also down, Then entire cluster will be down.
+
+What is High Availability?
+	To overcome the Federation problem, Hadoop provides a solution as High Availability.   Putting Journal node on top of all Name nodes, 
+	All the transactions are not available in Name node, Its having only latest transactions. Other transactions are stored in Journal nodes.
+	All write operation will happen through Active name node and Sync up with Stand by name node. 
+	All read operation will happen through Stand by Name node.
+	
+	If Active name node is down, Zookeeper will detects Active name node is down, then it will ask Standby name node to act as Active Name node. 
+	It will read the meta data from Journal node and do process. We can have  a Multiple Journal Node.
+	
+	Zoo Keeper is monitoring those Journal node by Receiving hear beat from Journal node. Data node is sending heart beat to both Active and Standby name nodes.
+	
+	=================================
+	
+	Entire meta data will not be stored in Name node, It will be stored in Journal Node, All three journal nodes are in Sync.
+	Latest transactions are only having in Namenode.	
+	
+	Meta data is not stored in Name node. Meta data is stored in Journal node. 
+	

@@ -1,0 +1,103 @@
+Linking with Spark:-
+--------------------
+To write a Spark application, you need to add a Spark dependency to Maven,
+
+groupId = org.apache.spark
+artifactId = spark-core_2.11
+version = 2.2.0
+
+If you wish to access an HDFS cluster, you need to add a dependency on hadoop-client
+
+groupId = org.apache.hadoop
+artifactId = hadoop-client
+version = <your-hdfs-version>
+
+Initializing Spark:-
+-------------------
+1.First We have to create SparkContext() object, Which tells Spark, how to access the cluster. Before that, we need to build SparkConf() object which contains the configuration about your application.
+Only one SparkContext() should be active in one JVM. You should stop() the active SparkContext before creating next one.
+
+val conf=new SparkConf().setAppName("Test").setMaster("master");
+val sc=new SparkContext(conf)
+
+master --> Spark, Mesos or YARN cluster URL or "local" string to run local mode.
+
+Difference between SparkContext and SparkSession:-
+---------------------------------------------------
+
+
+Sample program:- Spark - Core - Word Count:
+--------------------------------------------
+object WordCount {
+
+  def main(arg: Array[String]) {
+
+    if (arg.length < 2) {
+      System.err.println("Usage: WordCount <Input - Path> <output-path>")
+      System.exit(1)
+    }
+
+    val jobName = "WordCOunt"
+
+    val conf = new SparkConf().setAppName(jobName)
+
+    val sc = new SparkContext(conf)
+
+    val pathToFiles = arg(0)
+    val outputPath = arg(1)
+
+    val lines = sc.textFile(pathToFiles)
+
+    val words = lines.flatMap(l => l.split(","))
+
+    val pairs = words.map(w => (w, 1))
+
+    val counts = pairs.reduceByKey(_ + _)
+    
+    counts.saveAsTextFile(outputPath)
+
+  }
+
+}
+
+Spark 2.0:-
+-----------
+import org.apache.spark.SparkContext
+import org.apache.spark.SparkConf
+import org.apache.spark.sql.SparkSession
+
+object  mapTest{
+
+def main(args: Array[String]) = {
+	val spark = SparkSession.builder.appName("mapExample").master("local").getOrCreate()
+	val data = spark.read.textFile("data.txt").rdd
+	val mapFile = data.map(line => (line,line.length))
+	mapFile.foreach(println)
+	}
+}
+
+Sample program for Broadcast Variables:-
+-----------------------------------------
+
+
+
+Sample program for Accumulators:-
+---------------------------------
+
+
+Sample program for Persistence:-
+--------------------------------
+
+
+Internal Process:
+================
+1. Driver Program is converted into Lineage graph (Creation of RDD with transformations and actions)
+2. Lineage graph is converted into stage graph (How to execute a program in parallel) - (Creation of stage boundary based on wild transformation)
+3. Stage graph is executed as a task. (No of tasks = No of partitions , No of Partitions = No of split)
+4. Task will be submitted to Cluster managers (CM's)
+
+No of jobs = No of Actions is performed in a program
+No of tasks = No of partitions , No of Partitions = No of split
+
+Job will be started/executed when action is invoked.
+Job will not started when transformation is invoked.

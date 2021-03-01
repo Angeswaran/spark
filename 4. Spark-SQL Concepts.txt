@@ -1,0 +1,421 @@
+What is Spark-SQL:-
+------------------
+1. Spark-SQL is a extension of spark, which is used to working with Structured and Semi-Structured data and also We can query Big data with SQL. 
+
+Spark SQL provides three main capabilities:-
+--------------------------------------------
+1. DataFrame:- 
+2. Read and Write data in different data formats.
+3. we can query data with SQL.
+
+What is DataFrame? (Introduced in Spark 1.3)
+---------------------------------------------
+1. DataFrame is a collection of data with named columns.
+2. It is similar to Table in RDBMS.
+3. DataFrame can be created by External data file, Hive tables, External database or Existing RDD.
+4. DataFrame API is available in Java, Scala, Python and R.
+
+What is DataSet:- (Introduced in Spark 1.6):-
+--------------------------------------------
+1. DataSet is a extension of DataFrame, which provides compile time Safety and also providing object oriented programming.
+2. It uses Encoders for fast Serialization. instead of Java/Kyro Serialization.
+
+Difference between RDD, DataFrame and dataSet:-
+-----------------------------------------------
+RDD API:- (2011) Spark 1.0
+---------
+1. It is a collection of data which is splitted as a partitions across the cluster that can be operated in parallel.
+2. Fault tolerant and ImMutable.
+3. Processing Structured and Semi-Structured data.
+4. Functional Transformation
+
+Limitation of RDD:-
+-------------------
+1. No Schema is associated with data.
+2. Optimization should be done from User end
+3. Reading from Multiple dataset is difficult.
+4. Combining Multiple dataset is difficult.
+
+DataFrame:- (2013)  Spark 1.3
+--------------
+1. Distributed collection of data with named columns.
+2. Fault tolerant and ImMutable.
+3. Processing Structured data.
+4. DataSource API. Can connect Multiple Datasource.
+5. Catalyst Query Optimization. 
+
+Limitation of DataFrame:-
+-------------------------
+1. Compile time Safety --> We can't find the issue in Compile time. 
+2. Functional Programming API --> you can use only default function available in Spark-SQL, If you want any other function you can create UDF.
+
+DataSet:- (2015)   Spark 1.6
+------------------------------
+1. DataSet is a extension of DataFrame which provides type safety and object oriented programming interface.
+2. It uses Encoders for fast Serialization. RDD is having Default Serialization as Java Serialization, 
+3. It is Inter operable --> Easily convert dataFrame into dataset.
+
+It is taking each row as objects.
+
+Difference between Spark-Context and SparkSession:-
+----------------------------------------------------
+Prior to Spark 2.0, SparkContext is used to connect Spark Cluster using Resource Manager.
+SparkConf is required to create SparkContext, which stores the configuration parameters like Application name, Executor memory, executor core etc.
+In order to use API of SQL, Hive and Streaming, Separate context is required. 
+
+Spark 2.0, SparkSession is a Single point of Entry where we can do all Spark Functionalities and Spark programming with DataFrame and DataSet APIs. 
+In order to Use, SQL, Hive and Streaming, No need to Create Separate Context, SparkSession includes all APIs.
+
+Creating Spark session:-
+----------------------
+val spark = SparkSession.builder.appName("WorldBankIndex").getOrCreate()
+
+Configuring properties:
+----------------------
+spark.conf.set("spark.sql.shuffle.partitions", 6)
+spark.conf.set("spark.executor.memory", "2g") 
+
+Getting Started - Starting point - SparkSession:-
+-------------------------------------------------
+
+import org.apache.spark.sql.SparkSession
+
+val spark = SparkSession.builder().appName("Spark SQL basic example")
+  .config("spark.some.config.option", "some-value").getOrCreate()
+
+// For implicit conversions like converting RDDs to DataFrames
+import spark.implicits._
+
+
+Creating DataFrames:-
+---------------------
+val df = spark.read.json("examples/src/main/resources/people.json")
+
+// Displays the content of the DataFrame to stdout
+df.show()
+
+Untyped Dataset Operations (aka DataFrame Operations):-
+-------------------------------------------------------
+Typed Transformation:-   ????
+
+Untyped Transformation:-     ???
+--------------------------
+
+df.printSchema()
+
+// Select only the "name" column
+df.select("name").show()
+
+// Select everybody, but increment the age by 1
+df.select($"name",$"age" +1).show()
+
+// Select people older than 21
+df.filter($"age" > 21).show()
+
+// Count people by age
+df.groupBy("age").count().show()
+
+Adding new column to the dataFrame,
+
+df.withColumn("ID", row_number() over Window.orderBy("any column name in the dataframe"))
+
+Remove column from DataFrame.
+
+val dfAfterDrop=initialDf.drop("column1").drop("coumn2")
+
+Renaming column with new column,
+
+val dfAfterColRename= dfAfterDrop.withColumnRenamed("oldColumnName","new ColumnName")
+
+Running SQL Queries Programmatically:-
+--------------------------------------
+SparkSession enables application to run SQL Queries and returns the results as a dataframe.
+
+df.registerTempTable("people")
+
+(or)
+
+df.createOrReplaceTempView("people")
+
+val SqlDF = spark.sql("Select * from people")
+
+sqlDF.show()
+
+Global Temporary View:-
+-----------------------
+The Scope of the Temp view are per session, The Temp view will be disappear when the session terminates. If you want to Temp view to be shared among all sessions and keep alive until the spark application terminates. you can create Global Temp View.
+
+// Register the DataFrame as a global temporary view
+df.createGlobalTempView("people")
+
+// Global temporary view is tied to a system preserved database `global_temp
+spark.sql("Select * from global_temp.people").show()
+
+// Global temporary view is cross-session
+spark.newSession.sql("select * from global_temp.people").show()
+
+Creating DataSets:-
+-------------------
+1. Dataset is a extension of dataframe, which provides compile time safety and Object oriented programming interface.
+2. It uses encoder to serialize the objects instead of Java/Kryo Serialization.
+
+Note:- Case class in Scala 2.10 can support only up to 22 fields.
+
+What is case class?
+---------------------
+Case class is a class which is created by using case keyword. which is used for inferring the RDD with case class variables to make a DataFrame.
+
+// Create custom class that implements product interface,
+case class Person(name: String, age: Long)
+
+//Encoders are created for case classes
+val caseClassDS = Seq(Person("Anand",30)).toDS()
+
+caseClassDS.show()
+
+// +----+---+
+// |name|age|
+// +----+---+
+// |Anand| 32|
+// +----+---+
+
+//Encoders are automatically provided by importing spark.implicits._
+val primitiveDS = Seq(1, 2, 3).toDS()
+primitiveDS.map(_ + 1).collect() // Returns: Array(2, 3, 4)
+
+// DataFrames can be converted to a Dataset by providing a class. Mapping will be done by name
+val path = "examples/src/main/resources/people.json"
+val peopleDS = spark.read.json(path).as[Person]
+peopleDS.show()
+
+// +----+-------+
+// | age|   name|
+// +----+-------+
+// |null|Michael|
+// |  30|   Andy|
+// |  19| Justin|
+// +----+-------+
+
+Interoperating with RDDs:-
+===========================
+Spark-SQL supports two different methods to converting existing RDD to dataset. 
+	a) Inferring the Schema Using Reflection
+	b) Programmatically Specifying the Schema
+	
+Inferring the Schema Using Reflection:-
+--------------------------------------
+
+case class person(id : Int, name : String)
+
+// For implicit conversions from RDDs to DataFrames
+import spark.implicits._
+
+//Create a RDD of Person object from text file and convert them into DF.
+
+val peopleDF = spark.sparkContext.textfile("data.txt").map(_.split(","))
+			   .map(attributes => person(attributes(0),attributes(1).toInt)).toDF()
+			   
+//Register dataframe as a Temp view
+peopleDF.createOrReplaceTempView("people")
+
+val teenagersDF = spark.sql("SELECT name, age FROM people WHERE age BETWEEN 13 AND 19")
+
+// The columns of a row in the result can be accessed by field index
+teenagersDF.map(teenager  => "Name: " + teenager(0)).show()
+
+// or by field name
+teenagersDF.map(teenager => "Name: " + teenager.getAs[String]("name")).show()
+
+
+Programmatically Specifying the Schema:-
+---------------------------------------
+
+//creating RDD
+val peopleRDD = spark.sparkContext.textfile("people.txt")
+
+//Schema is encoding in a string 
+val schemaString = "name age"
+
+//Genarate the schema based on the string of schema,
+val fields = schemaString.split(" ")
+             .map(fieldname => StructField(fieldname, StringType, true))
+
+val schema = StringType(fields)
+
+//convert the RDD into Records
+val rowRDD = peopleRDD.map(_.split(",")).map(attributes => Row(attributes(0),attributes(1).toInt))
+
+//Apply Schema to RDD
+val peopleDF = Spark.createDataFrame(rowRDD,schema)
+
+//Creates Temp view for DF
+peopleDF.createOrReplaceTempView("people")
+
+val names = spark.sql("Select * from people")
+
+names.map(attributes => "Name is " + attributes(0)).show()
+
+// +-------------+
+// |        value|
+// +-------------+
+// |Name: Michael|
+// |   Name: Andy|
+// | Name: Justin|
+// +-------------+
+
+===============================
+Generic Load/Save Functions:-
+===============================
+val usersDF = spark.read.load("data.parquet")
+usersDF.select("name","favorite_color").write.save("namesAndFavColors.parquet")
+
+Manually Specifying Options:-
+-----------------------------
+Format might be (json, parquet, jdbc, orc, libsvm, csv, text)
+
+val peopleDF = spark.read.format("text").load("data.txt")
+peopleDF.select("name","age").write.format("text").save("output.txt")
+
+Run SQL on files directly:-
+============================
+Instead of using read API to load a file into DataFrame and query it, you can also query that file directly with SQL.
+
+val SqlDF = spark.sql("Select name,age from people. `data.txt`")
+
+Save Modes:-
+------------
+4 options,
+
+SaveMode.ErrorIfExists --> Throw error if already the file is present
+SaveMode.append --> Append the text if already the file is present
+SaveMode.overwrite --> overwrite the file if already the file is present
+SaveMode.ignore --> Ignore the process If already the file is present
+
+Saving to Persistent Tables:-
+===============================
+The temp table which is create by using createOrReplaceTempView, It will be disappear when Spark program has restarted, Spark provides default local hive metastore (Derby) to store the DF data into persistant table using "saveAsTable" method.
+This will be present until you maintain the connection to same metastore.
+
+For File based datasource (eg: text, json, parquet etc..) we can specify the custom path to store it.
+
+df.write.option("path","/some/path").saveAsTable("people")
+
+when the table is dropped, custom table path data will not be dropped, if no custom path is not mentioned then Spark will write the data into default path of warehouse directory. if the table is dropped, then data also will be dropped.
+
+Bucketing, Sorting and Partitioning:-
+--------------------------------------
+Its also possible to bucket, sort or partition the output, Bucketing and sorting are applicable only to persistent tables:
+
+peopleDF.write.bucketBy(42,"name").sortBy("age").saveAsTable("people")
+
+peopleDF.write.partitionBy("favorite_color").format("parquet").saveAsTable("people") //we can use saveAsTable and save also for only partitioning
+
+Its possible to use both partition and Bucketing in the same table,
+
+peopleDF.write.partitionBy("favorite_color").bucketBy(42,"name").saveAsTable("people_partitioned_bucketed")
+
+Parquet Files:-
+===============
+--> Default file format for Spark is Parquet, Spark-SQL provides the support for both reading and writing parquet file that automatically preserves the schema of original data. For Writing the Parquet files, The Columns are automatically converted to be nullable for compatibility reason.
+
+Loading Data Programmatically:-
+-------------------------------
+// Encoders for most common types are automatically provided by importing spark.implicits._
+import spark.implicits._
+
+val peopleDF = spark.read.json("data.json")
+
+// DataFrames can be saved as Parquet files, maintaining the schema information
+peopleDF.write.parquet("output.parquet")
+
+// Read in the parquet file created above
+// Parquet files are self-describing so the schema is preserved
+// The result of loading a Parquet file is also a DataFrame
+val parquetFileDF = spark.read.parquet("people.parquet")
+
+//Create temp view and then used in SQL Statements
+parquetFileDF.createOrReplaceTempView("PeopleParquet")
+
+val names = spark.sql("select name from PeopleParquet where age between 13 and 19")
+names.map(attributes => "Names are" + attributes(0)).show()
+
+JSON Datasets:-
+=================
+Spark-Sql can automatically infer the schema of a JSON dataset.load it as DataFrame.
+
+This conversion can be done using, SparkSession.read.json()
+
+// this is used for implicitly convert RDD to DataFrame
+import spark.implicits._
+
+// The path can be either a single text file or a directory storing text files
+val peopleDF = spark.read.json("data.json")
+
+peopleDF.printSchema()
+
+//Create TempView on the dataFrame
+peopleDF.createOrReplaceTempView("people")
+
+// SQL statements can be run by using the sql methods provided by spark
+val teenagerNamesDF = spark.sql("SELECT name FROM people WHERE age BETWEEN 13 AND 19")
+teenagerNamesDF.show()
+// +------+
+// |  name|
+// +------+
+// |Justin|
+// +------+
+
+Hive Tables:-
+=============
+Spark SQL supports reading and writing the data stored in Hive.
+
+Configuration:
+=============
+1. Copy hive-site.xml to Spark/conf/hive-site.xml
+2. Add the My sql connector jar path to spark-env.sh file by,
+   export SPARK_CLASSPATH=/home/datadotz/mysql-connector.jar to Spark-env.sh file.
+
+3. Extract hive-0.13.0 and change hive_home to Hive-0.13.0
+4. MySQL connector jar to hive-0.13.1/lib folder
+
+Simple Program:
+===============
+
+object test
+{
+   
+   def main(args: Array[String])
+   {
+	val conf = new SparkConf().SetAppName("Appilication1")
+	val sc = new SparkContext(conf)
+	val sqlContext = new HiveContext(sc)
+	
+	//Accessing data in hive
+	sqlContext.sql("Create table if not exists emp(id int,name string")
+	sqlContext.sql("load data local inpath 'path' into table emp")
+
+	Val employeedf = sqlContext.sql("select * from emp").collect().foreach(println)	
+	
+	//Writting the data to hive table
+	employeedf.write.mode(saveMode.append).saveAsTable("emp")
+	
+    }
+}
+
+Schema Merging:
+===============
+	User can start with simple schema, We can add more columns to the schema as needed.
+The Perquet data source is now able to detect this case automatically and merge the schema of all these fields.
+
+schema merging is a relatively expensive operation, and is not a necessity in most cases,
+
+It turned off by default, we can enable by,
+
+spark.sql.parquet.mergeSchema = true;
+
+Metadata Refreshing:
+===================
+Spark sql caches perquet meta data for better performance. When hive metastore perquet table conversion is enabled, meta data of the perquet table also to be cached. So we need to refresh them manually to ensure the consistent data.
+
+sqlContext.refreshTable("TableName");
+

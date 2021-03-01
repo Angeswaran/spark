@@ -1,0 +1,41 @@
+Problem with Mapreduce:-
+=========================
+1. Limits Scalability
+2. Poor Resource Utilization (Fixed no of Map and Reduce Slots)
+3. Limitation of Running other Application.
+4. Availability Issues.
+
+Solution is YARN:-
+=================
+
+YARN - (Yet Another Resource negotiator):
+=========================================
+1. YARN is a new component which is added in Hadoop 2.0, In Hadoop 2.0, new layer had been introduced between HDFS and Mapreduce. 
+2. YARN is a Framework, which is responsible for Cluster resource Management. (Managing the resources of the cluster)
+
+MapReduce - (Cluster Resource Management + Data Processing - Job Management)
+
+YARN --> Cluster Resource Management  
+Mapreduce --> Data processing
+
+Cluster Resource Management in Hadoop 1.0:-
+--------------------------------------------
+1. In Hadoop 1.0,  There is a tight coupling between Cluster resource management and mapreduce programming Model.
+2. In Mapreduce Framework, Mapreduce job is divided into number of tasks is called as Mappers and Reducers. Each task runs on one of the node in the cluster and each machine is having limited no of predefined slots (Map slots and Reduce slots) for running tasks concurrently.
+3. Here job tracker is responsible for both managing the cluster resources and execution of mapreduce jobs.It reserves and schedules the slots for all tasks, runs and monitor the each task, If the task is failed, It allocates the new slot and Reattempts the task. 
+4. After Task finishes, Job tracker clean up the Temporary resources and releases the task's slot to make it available for other jobs.
+
+Problem with Hadoop 1.0 Approach:-
+---------------------------------
+1. Limits Scalability - Job tracker running on the single machine which doing several tasks,
+	a) Resource Management
+	b) Job and task Scheduling
+	c) Monitoring
+Although so many other machines are available, They are not getting used. It limits scalability.
+
+2. Availability Issues:- Job tracker is a single point of availability, If job tracker downs, entire cluster will be down.
+
+3. Problem with Resource utilization:- In hadoop 1.0, There is a concept of predefined map and reduce slots are available for each task tracker.
+Some times, Map slots are full and its waiting for resources, That time, Reduce slots might be available. Here Resources could sit idle which is reserved for reduce slots, even when there is a immediate requirement for Map slots. 
+
+4 Limitation in running non-Mapreduce Application:- In Hadoop 1.0, Job tracker was tightly coupled with Mapreduce and only supporting Application which supports mapreduce framework.

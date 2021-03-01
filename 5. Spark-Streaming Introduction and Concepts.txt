@@ -1,0 +1,69 @@
+what is spark streaming?
+-------------------------
+1. Spark streaming is a extension of spark core which is used for processing of Streaming data
+2. Data can be graped from many sources like Kafka, Flume, TCP sockets and can be processed by Spark engine and then processed  data can be pushed to out systems.(File system,Databases or live dashboard).
+
+How internally works:-
+-----------------------
+1. Spark streaming consumes the data and divides the data into batches and processed by spark engine to generate final results.
+
+Benefits of Apache Spark Streaming:-
+-------------------------------------
+1. Unified engine for both Batch and Stream process.
+2. Fast recovery from failures
+3. Better load balancing and resource usage.
+4. Combining Streaming data with Static datasets and can do interactive queries.
+
+What is DStream? (Discretized Streams )
+----------------------------------------
+1. Spark Streaming provides high level Abstraction is called as D-Stream, which provides Continues of Streaming data.
+2. Which also represents Sequence of RDD.
+3. D stream can be created from sources like Kafka, Flume, RDBMS, No SQL, HDFS, S3, Cassendra File system.
+4. Instead of processing one record at a time, Spark Streaming receives the data in parallel and make batch of DStream and then Spark engine runs on the batches and generate the outputs.
+
+Benefits of DStream?
+--------------------
+1. Dynamic load balancing
+2. Fast recovery from failures
+3. Unification of batch, streaming and interactive analytics
+
+Batch Interval:
+---------------
+RDD of the DStream is created for the certain interval is called as Batch Interval. 
+
+Block Interval:-
+----------------
+Partition of the RDD is created for the certain interval is called as Block Interval.
+
+Note:- Batch interval will be multiples of Block interval.
+
+Window Length:-
+---------------
+How much duration of data, we are going to process is called as Window length.
+
+Sliding Interval:-
+------------------
+What Frequency of data need to be processed is called as Sliding Interval.
+
+Check pointing:-
+----------------
+Basically Any Spark Streaming application should run for 24*7, If any failures in the System (e.g., system failures, JVM crashes, etc.), data is fault Tolerant, So that we are using checkpointing concept for fault Tolerant.
+
+Checkpointing is nothing but process of writing received records to HDFS at Checkpointing interval, If any issue is happened to the System, Checkpoint folder will act as backup folder, Streaming context will be created from Checkpointing folder.
+
+1. First time, New Streaming context will be created, After that configure the checkpoint folder with ssc.checkpoint(path)
+2. Define D-Stream, After that Start Streaming Context.
+3. When the program restarts after failure, Streaming context will be re-created from checkpoint folder.
+
+Checkpointing Interval:-
+-------------------------
+
+
+
+
+
+
+
+
+
+

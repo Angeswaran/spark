@@ -1,0 +1,77 @@
+GitHub General Commands:-
+============================
+git help --> help
+git --version --> Version
+
+GitHub Clone:-
+=============
+git clone https://github.com/user/project.git --> Clone to Localhost
+git clone https://github.com/user/project.git ~/dir/folder --> CLone to localhost folder
+git clone -b branchname https://oauth2:<token>@gitlab.com/username/repo.git --> Clone from specific branch
+
+Git add:-
+==========
+git add . --> Get ready everything ready for Commit
+git add index.html --> Get custom file ready for Commit
+git status --> showing the status of the Commit
+git commit -m "message"
+git rm index.html --> Remove files from Git
+git rm --cached index.html --> Remove file but do not track anymore
+git mv index.html dir/index_new.html --> Move/Rename the file.
+git checkout --index.html --> Undo modifications (restore files from latest commited version)
+
+
+Git Checkout/Revert/Reset:-
+==============================
+git checkout --index.html --> Latest change before commit will be discarded
+git revert commit_id (from git log) --> Revert the change after commit 
+git revert -n commit_id --> revert the changes to modified state and do commit explicitly
+git reset --hard commit_id --> It will be reset the state to till which commit id you want to have it.
+git log --oneline (or) git log
+
+Branch related Commands:-
+=======================
+1. git branch -a --> Show all branches (Local and remote)
+2. git branch branch_name --> Create new git branch
+3. git checkout branch_name --> Change Branch Name
+4. git checkout -b branch_name --> Create and Change to New Branch
+5. git branch -m old_branchname new_branchName --> Rename the Branch Name
+6. git branch -d branch_name --> delete the Branch Name from master
+6. git branch --merged --> Show all merged branches
+
+Git Merge from Feature Branch to Master:-
+===========================================
+git checkout master
+git merge branch_name
+git push origin master
+
+Git HEAD:-
+============
+git show HEAD --> Shows recent Commits details
+HEAD --> First recent commits
+HEAD~1 --> Show  Second recent Commits
+HEAD~2 --> Shows Third recent Commits
+
+Git difftool:-
+=============
+git difftool old_commitid new_commitid
+or
+git difftool HEAD~2 HEAD~1
+
+diff/merge using meld Tool:-
+===============================
+git mergetool (It will open meld tool --> using arrow button, we can make correct changes)
+
+Git Pull Request:-
+=================
+1. Code is available in master. 
+2. Developer is creating a Feature branch and do clone the code from master to feature branch.
+3. Make the changes and commit the code to feature branch. 
+4. Raising the request to merge the code from feature branch to master branch. 
+5. Owner will Comment or approve the request to mege the changes.
+
+
+Fork will copy the code from Master to our local repo.
+
+
+

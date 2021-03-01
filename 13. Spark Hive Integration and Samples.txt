@@ -1,0 +1,36 @@
+Hive Tables:
+============
+	Spark SQL Supports reading and Writting the data stored in hive.
+
+Configuration:
+=============
+1. Copy hive-site.xml to Spark/conf/hive-site.xml
+2. Add the My sql connector jar path to spark-env.sh file by,
+   export SPARK_CLASSPATH=/home/datadotz/mysql-connector.jar to Spark-env.sh file.
+
+3. Extract hive-0.13.0 and change hive_home to Hive-0.13.0
+4. MySQL connector jar to hive-0.13.1/lib folder
+
+Simple Program:
+===============
+
+object test
+{
+   
+   def main(args: Array[String])
+   {
+	val conf = new SparkConf().SetAppName("Appilication1")
+	val sc = new SparkContext(conf)
+	val sqlContext = new HiveContext(sc)
+	
+	//Accessing data in hive
+	sqlContext.sql("Create table if not exists emp(id int,name string")
+	sqlContext.sql("load data local inpath 'path' into table emp")
+
+	Val employeedf = sqlContext.sql("select * from emp").collect().foreach(println)	
+	
+	//Writting the data to hive table
+	employeedf.write.mode(saveMode.append).saveAsTable("emp")
+	
+    }
+}

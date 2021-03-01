@@ -1,0 +1,12 @@
+1. Partitioning
+2. Bucketing
+3. Types of Joins
+4. Parallel Execution --> SET hive.exec.parallel = true;
+5. ORC format
+6. Change Execution Engine to TEZ or Spark.
+7. Vectorization -- https://documentation.altiscale.com/hive-with-tez-0-13
+
+	Processing the batch of rows together instead of processing one row at a time.
+Default It is false, have to enable it to true
+Set hive.vectorized.execution.enabled=true;
+

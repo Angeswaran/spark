@@ -1,0 +1,320 @@
+Concepts:-
+==========
+1.  What is Mapreduce?
+2.  Advantages of Mapreduce?
+3.  Two Main phases of Mapreduce?
+4.  What are the deamons are associated with Mapreduce?
+5.  What are the terms used in Mapreduce? (Job, Task, Task Attempt)
+6.  Serialization and De-Serialization?
+7.  What is Storage and Compute Node?
+8.  What is input File system?
+9.  What is input Format and Types?
+10. What is Input Split? Difference between Split and Block?
+11. What is Record Reader?
+12. What is Mapper?
+13. What is Combiner?
+14. What is Partitioner?
+15. What is Shuffling and Sorting?
+16. What is reducer?
+17. What is Record Writer?
+18. What is Counters and Types?
+19. What is Identity Mapper and Identity Reducer?
+20. What is Single Reducer and Zero Reducer?
+21. What is Side data Distribution?
+22. What is distributed Cache?
+23. What is Join and Types of Joins?
+24. What is Sorting and Secondary Sorting?
+
+Mapreduce:-
+----------
+Mapreduce is a framework, which is used for processing the data set which is stored in HDFS, Mapreduce processes the data in parallel by dividing the job into set of independent tasks, So Parallel processing improves speed and Reliability.
+
+Advantages of Map reduce:-
+--------------------------
+1. fault tolerance (Automatic Fail over of Task)
+2. Parallelization 
+
+Mapreduce data processing takes two main phases, 
+
+--> Map phases --> It is the first phase of data processing, In this phase, we specify the business logics
+--> Reduce Phase --> It is the second phase of data processing, In this phase, we specify Aggregation or Summation etc.
+
+Deamons:-
+========
+1. Job tracker --> It is used to submit and Tracking the jobs. Client Submits the job to Job tracker, Job tracker splits the job into multiple tasks and assign each task to task tracker who has free slots and tracking of those tasks.
+It tries to provide data locality as much as possible.
+2. Task Tracker --> launches and monitors the task.
+
+Terminology:-
+============
+1. Job --> The Complete program to be executed.
+2. Task --> Subset of Job, Can be either MAP or Reduce
+3. Task Attempt --> An attempt to run the task, If the task failes, JOb tracker tries to start the another task attempt for the same task.
+					By default, Total number of task attempt of task is FOUR.
+					
+Anatomy of MR Code:- (Main Components):-
+========================================
+1. Mapper --> a JAVA class to be extended by the Developer.
+   Methods --> setup(), map(), run(), cleanup()
+   Map method takes a key value pair and emit zero or more intermediate key value pairs depending upon logic implemented by developer.
+   A JVM Running mapper will be launched for each input Split.
+   
+2. Reducer --> A Java class to be extended by the developer.
+   Methods --> setup(), reduce(), run(), cleanup()
+   Reduce method will take the intermediate output and emit zero or more intermediate key value pairs depending upon logic implemented by developer.
+   
+3. Driver Class --> Configures the job and Submits the Job to the cluster from the client.
+
+What are the basic parameters of Mapper.?
+-------------------------------------------
+	LongWritable, Text, Text, IntWritable
+
+What is Serialization?
+-----------------------
+	The process of converting objects into Bytes for trasmitting the data over network.
+	
+What is De-Serialization?
+-----------------------
+	The process of converting Bytes into Objects for reading the data.
+	
+What is Storage Node and Compute Node:-
+-------------------------------------
+Storage Node is used for Store the processing data.
+Compute Node is used for actual business logic will be executed.
+
+What is a use of context object?
+--------------------------------
+	Context object allows the mapper to interact with rest of the Hadoop system. It includes configuration data for the job and allow it to emit output.
+	
+What is Record Reader?
+-----------------------
+It reads the data from split and converts the data into key-value pairs. 
+                   Record reader uses TextInput format to convert the data into key-value pairs by default.
+				   It communicates with Input split, until completion of file.
+				   It assigns byte offset to each line present in the file. then These key value pairs are further send to mapper.
+				   
+Difference between block and Split?
+-----------------------------------
+1. Block is a Physical representation of data, which may have incomplete data.
+2. Split is a Logical representation of data, which dont have incomplete data.
+
+What is input SPlit?:-
+---------------------
+Its logical representation of data, which will be processed by individual mapper, For each split, one map task is created. 
+                 Number of Splits = Number of Mappers
+				 Framework will divide split into Records.
+				 
+Partitioner:-
+------------
+1. Partitioner is used to grouping the data bases on the key.
+2. Partitioner comes into picture when there are more than one reducer, It will take the input from combiner.
+3. Default partition is a Hash partition.
+4. No of partitioner = No of reducer
+5. Partition will be takes place after Map phase and before reduce Phase.
+6. partition output will be shuffled to reducer during shuffling phase.
+
+Custom Partitioner:-
+-------------------
+	1. If you are working with Single Reducer. output of all Mapper will be Directly give it to That Reducer.
+	2. If you are working with two or more Reducer, Partitioner only will decide which key is going to which reducer based on hash key.
+We cannot send key value pair to specific Reducer, If you want to do that, We could go for Custom partitioner.
+	
+The below Steps needed,
+
+1. Extend partitioner class
+2. Override the method getPartition
+   Input --> Key,Value,No of reducers
+   Output --> 0 to n-1 (n=No of Reducers)
+3. Job.setPartitionerClass(yourclassname.class)
+
+Example:-
+
+class myPartitioner extend Partitioner<K,V>
+{
+	public int getPartition(k Key, V Value,int NumReduceTasks)
+	{
+		retrun (key.hashCode() && Integer.MAX_VALUE()) % NumReduceTasks;
+	}
+}
+
+What is Shuffling:-
+-------------------
+After Partitioning, the output is shuffled to reducer node.
+						   Shuffling is nothing but physical movement of data to reducer over the network. 
+						   
+what is Combiner:-
+------------------
+Combiner is the Mini Reducer which performs the local aggregation on the mapper output.
+              It minimizes the data transfer between mapper and reducer.
+              when the combiner functionality completes, framework will passes the output to the partitioner to further processing.
+			  
+what is Counters:-
+------------------
+	It is used to gathering Statistics about the Job for Quality control.
+	
+Twom types of Counters:-
+-----------------------
+1. Built in Counters 
+	a) Job Counters
+	b) Task Counters
+	
+2. Custom Counters
+
+To change Input Block Size:-
+------------------------------
+1. mapred.min.split.size
+2. mapred.max.split.size
+3. dfs.block.size
+4. split size 
+
+2. input Format:- 
+--------------------
+Input files defines how to Split and read the data from HDFS.
+                  Input format creates input split.
+				  
+Identity Mapper:-
+------------------
+	Identity mapper is a default mapper class provided by hadoop. when there is no mapper class is specified in map reduce job, then this mapper will be executed.
+	mapping inputs directly given to outputs.
+
+Identity Reducer:-
+-------------------
+	When there is no reducer class is specified in Mapreduce job, then this class will be picked by job automatically.
+	Write all input values directly to output values.
+	
+Single Reducer:-
+---------------
+	Can use, when complete sort order is required.
+	
+Zero reducer:-
+-------------
+	1. setNumReduceTasks to 0.
+	2. Output from map will go directly into output format and disk.
+	3. No Sorting and Shuffling.
+	
+Side data Distribution:- 
+------------------------
+	It is nothing but keeping some read only data avilable for all the tasks.
+	
+It can be achieved by two ways.
+1. Configuration object.
+2. Distributed Cache.
+
+Configuration object:
+---------------------
+	Configuration conf = new Configuration();
+	conf.set("Personalname","Kumar");
+	
+Distributed Cache:-
+-------------------
+	Distributed cache is used to share some files across all nodes in the cluster.
+	
+Joins:-
+-------
+	Joining data from Multiple datasets
+	
+Two Types of Jobs:-
+-----------------
+1. Map side Join
+2. Reduce side Join
+
+Map side Join:-  (Map only job)
+---------------
+1. Load one set of data into memory and Stored it an associative array.
+2. Key of the associative array is a Join key.
+3. Run the mapper on Other set of data and perform a look up on the associative array using Join key.
+4. If the join key is found, then you will have successful join otherwise do nothing.
+
+Reducer Side Join: (Join will happen on Reducer side)
+------------------
+1. ??
+
+It can be done by two ways
+1. Multiple Inputs
+2. Secondary Sorting
+
+Sorting:-
+---------
+1. Keys from all the mappers are sent to the reducers in Sorting order.
+2. total Sorting can be obtained by Single Reducer.
+3. Partial Sorting can be obtained by Partition
+
+Secondary Sorting:-
+-------------------
+Secondary sorting is used to sort the data in between Map and Reduce phase.
+
+After Map stage, Framework will do sorting based on Map output key, But Output passed to Reduce phase is not in Sorted order, So if you want to do sorting those data which is passed to Reduce phase, you can use Secondary sorting technique.
+
+Example:-
+--------
+	I want to match the pattern in a set of input files and give me list of filenames which are containing the pattern.
+	
+Input:-
+1. Set of input files
+2. Pattern
+
+Output:-
+1. list of file names containing the pattern
+
+Solution:-
+--------
+1. Set the pattern in Configuration object.
+2. Mapper (with TextInputFormat), verify the pattern
+3. If pattern matches, emit(Pattern,Filename) else emit nothing
+4. Zero Reducer
+
+ Steps of MapReduce Job Execution flow:-
+------------------------------------------
+1. Input-Files:- Data which is stored in a HDFS. 
+
+2. input Format:- Input format defines how to Split and read the data from HDFS. Input format creates input split.
+		
+3. Input Split:- Its logical representation of data, which will be processed by individual mapper, For each split, one map task is created. 
+                 Number of Splits = Number of Mappers
+				 Framework will divide split into Records.
+				 
+4. Record Reader:- It reads the data from split and converts the data into key-value pairs. 
+                   Record reader uses TextInput format to convert the data into key-value pairs by default.
+				   It communicates with Input split, until completion of file.
+				   It assigns byte offset to each line present in the file. then These key value pairs are further send to mapper.
+				   
+5. Mapper:- It reads the data from Record reader and generates Intermediate key-value pairs. This intermediate key-value pair is completely 
+			different from input pair. Because output of mapper is a collection of key-value pairs. 
+			Before writing the output of each mapper task, Partitioning will takes place on the basics of the key.
+
+			Partitioning will grouping all the key bases on key. Once Partition completes, Map output will be write to the HDFS.
+
+6. Combiner:- Combiner is the Mini Reducer which performs the local aggregation on the mapper output.
+              It minimizes the data transfer between mapper and reducer.
+              when the combiner functionality completes, framework will passes the output to the partitioner to further processing.
+
+7. Partitioner:- Partitioner comes into picture when you are working with more than one reducer. It takes the output from combiner and perform partitioning. 
+				 Partition will be decided bases on the hash key of the object. It will group the data based on the key.
+
+				 No of Partitioner = Number of Reducer
+
+				Basics of key- value, records are having the same key value will go to same partition (With in each mapper), 
+				Then each partition will send to corresponding reducer. 
+
+Partition will takes place After Map phase and Before Reduce Phase.
+
+Hash Partitioner is a default partitioner, It computes hash value of the key.
+
+Partitioner in a MapReduce job redirects the mapper output to the reducer by determining which reducer handles the particular key.
+
+How many partitioner in Hadoop?
+	No of partitioner = No of Reducer
+	Framework will generates partitioner when there are more than one reducers.
+	
+8. Shuffling and Sorting:- After Partitioning, the output is shuffled to reducer node.
+						   Shuffling is nothing but physical movement of data which is done over the network. 
+						   As all the mapper output is shuffled to corresponding reducers, Framework will merges the intermediate output and sort, 
+						   then provide as input to reduce phase.
+
+9. Reducer:- Reducers takes the input from Mapper and runs the reduce function on each of the them to generate the output. 
+output of reducer will be stored in HDFS.
+
+10. Record Writer:- It writes Reducer output to HDFS.
+
+11. output Format:-  
+

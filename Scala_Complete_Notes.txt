@@ -1,0 +1,1305 @@
+what is Scala
+what are the advantages of Scala
+Mode of Scala Programming
+Scala Execution flow
+Scala Variables
+Difference between object and class
+Data types in Scala
+If condition, while loop, for loop
+Comments (Single and Multi) // and /* hello */
+Oops Concepts
+	a) Class
+	b) Object
+	c) Singleton and Companion object
+	d) case classes and object
+	c) Abstraction 
+	d) Inheritance
+	e) Traits (Interface)
+	f) Polymorphism 
+		a) compile time polymorphism (Method overloading)
+		b) Run time polymorphism (Method overriding)
+	g) Closures 
+	h) Encapsulation 
+Functions
+	a) Function with call by Name
+	b) Function with Named Arguments
+	c) Function with Variable arguments
+	d) Function with Default Parameter values
+	e) Nested function
+	f) Partially applied function
+	g) Recursive function
+	h) Higher order function
+	i) Anonymous function
+	j) Currying function
+Collections
+	a) Set
+		a) TreeSet
+		b) HashSet
+		c) ListSet
+	b) List
+		a) 
+	c) Seq
+	d) Map
+		a) map
+		b) Tree map
+		c) ListMap
+		d) linkedHashMap
+		e) SortedMap
+Tuples
+	a) How to create and Access, Iterate
+Seq
+	
+What is Scala?
+--------------
+Scala is a Hybrid programming language which implements both object oriented + functional oriented language,  --> Pattern matching and rules
+Scala code is compiled into byte code and run on Java Virtual Machine.
+
+Advantage of Scala?
+-------------------
+1. Scala is object oriented language, in the sense that every value is a object
+2. Scala is a functional language, which means every function is a value.
+3. Scala is Statically typed, --> do type checking at compile time.
+
+Mode of Scala programming:-
+--------------------------
+1. REPL --> Read-Evaluate-Print-Loop --> Kind of shell in Scala where you can do some interactive analysis. It is used for test your code.
+2. CLI (Interactive mode programming) 
+3. Batch Mode (Test.scala and scala Test.scala)
+4. Scala IDE 
+
+Scala Execution Flow:-
+-----------------------
+Scala Source code --> Compiler --> Byte Code --> JVM --> Machine Code
+
+Scala Variables:
+-----------------
+	Values and variables are Scala variables
+
+Value variables:- --> It is Im-Mutable, Can not change the value once its assigned.
+Regular variable:- -->It is Mutable. Can change the value.
+
+var a: Int = 10
+val b: String = "Welcome"
+
+Difference between Object and Class:-
+------------------------------------
+1. Object is a class, but its already have instance. No need to create object using new keyword. we can call the method using object name. | But when we are creating class, we have to create object for accessing methods and variables. 
+But in Scala, Object is a Singleton object, we can create only one instance for the object.
+2. In Java, Main method may not available inside of the class, but in Scala, Main method should be inside of object.
+
+Statically typed languages: --> do type checking at Compile time
+Dynamically typed language --> do type checking at run time
+
+Data Types:-
+--------------
+Int
+Long
+Char
+String
+Float
+Double
+Boolean
+Unit --> Corresponds to no value (void)
+Null --> null or empty reference
+
+Type Inference:-
+---------------
+	val a : int = 0
+	
+	var b : Int = 0
+	
+	Data Type of variable is specified after variable name and before assigned value.
+
+	When you assign the value to variable like below, Scala compiler will figure out type of variable based on value assigned to it. This is called as Type inference.
+
+If condition, while loop, for loop:-
+-------------------------------------
+if (x > 20){
+	println("x is greater than 20")
+}
+else if(x > 100){  
+  println("x is greater than 100")
+}
+else{
+	println("x is less than 20")
+}
+
+While Loop:-
+-------------
+var a = 10 
+
+while (a < 20){
+	println("The value of a " + a)
+	a = a +1
+}
+
+do-while Loop:-
+--------------
+var a = 10
+
+do{
+	println("The value of a" + a)
+}
+while(a < 20){
+	println("The value of a " + a)
+	a = a +1
+}
+
+for Loop:-
+----------
+for (a <- 1 to 10){
+	println("The value of a is " + a)
+}
+Result --> 1,2,3,4,5,6,7,8,9,10
+
+for(a <- 1 until 10){
+	println("The value of a " + a)
+}
+
+Result --> 1,2,3,4,5,6,7,8,9
+
+for loop with Multiple ranges:-
+
+for(a <- 1 to 5; b <- 1 to 4){
+	println("The value of a " + a)
+	println("The value of b is " + b)
+}
+
+For loop with collections:-
+
+var list_sample = List(1,2,3,4,5)
+
+for(x <- list_sample){
+	println("The vallue of x is " + x)
+}
+
+
+For Loop with filter:-
+
+var list_sample = List(1,2,3,4,5)
+
+for(x <- list_sample if x != 2 ; if x < 5){
+	println("The value of x is " + x)
+}
+
+output:-
+-------
+1
+3
+4
+
+For loop with yield ????
+
+
+Comments (Single and Multi) // and /* hello */:-
+=================================================
+Singe line comments:- 
+//hello
+
+Multi line comments:-
+/* This is a
+	first method */
+	
+Oops Concepts:-
+===============
+Class:-
+--------
+--> Class is like a Blueprint that describes the states and behavior of the entity.
+-->	Class is a collection of objects.
+-->	Access Specifier is only a Public
+-->	It have Constructor, Variables and Methods.
+--> Class can extend only one class and class may extend multiple Traits.
+
+trait T1
+trait T2
+trait T3
+class C extends T1 with T2 with T3
+
+--> It can be created by using the keyword class.
+
+Sample Program:-
+----------------
+
+import java.io._
+
+class Point(val xc: Int, val yc: Int) {
+ 
+   var x: Int = xc
+   var y: Int = yc
+   
+   def move(dx: Int, dy: Int) {
+      x = x + dx
+      y = y + dy
+      println ("Point x location : " + x);
+      println ("Point y location : " + y);
+   }
+}
+
+object Demo {
+   def main(args: Array[String]) {
+      val pt = new Point(10, 20);
+
+      // Move to a new location
+      pt.move(10, 10);
+   }
+}
+
+Scalac demo.scala
+scala demo.scala
+
+Output
+Point x location : 20
+Point y location : 30
+
+Extending Class:-
+----------------
+We can extend the base class to sub class, But two conditions, 
+--> Method overriding requires "override" keyword.
+--> Only primary constructor pass the value to base constructor
+
+import java.io._
+
+class Point(val xc: Int, val yc: Int) {
+   var x: Int = xc
+   var y: Int = yc
+   
+   def move(dx: Int, dy: Int) {
+      x = x + dx
+      y = y + dy
+      println ("Point x location : " + x);
+      println ("Point y location : " + y);
+   }
+}
+
+class Location(override val xc: Int, override val yc: Int,
+   val zc :Int) extends Point(xc, yc){
+   var z: Int = zc
+
+   def move(dx: Int, dy: Int, dz: Int) {
+      x = x + dx
+      y = y + dy
+      z = z + dz
+      println ("Point x location : " + x);
+      println ("Point y location : " + y);
+      println ("Point z location : " + z);
+   }
+}
+
+object Demo {
+   def main(args: Array[String]) {
+      val loc = new Location(10, 20, 15);
+
+      // Move to a new location
+      loc.move(10, 10, 5);
+   }
+}
+
+Output
+Point x location : 20
+Point y location : 30
+Point z location : 20
+
+Object:- (Singleton)
+=====================
+--> Object is a real time entity, It contains state and Behavior.
+--> Object is a special type of class, which can be instantiated only one. because It is a Singleton object.
+
+case classes and object:-
+=========================
+--> Scala case classes are regular classes, which are immutable by default and decomposable by default.
+--> It does not use new keyword to instantiate object.
+
+Example:-
+----------
+case class CaseClass(a:Int, b:Int)  
+  
+object MainObject{  
+    def main(args:Array[String]){  
+        var c =  CaseClass(10,10)       // Creating object of case class  
+        println("a = "+c.a)               // Accessing elements of case class  
+        println("b = "+c.b)  
+    }  
+}  
+
+output:-
+-------
+a = 10
+b = 10
+
+Scala Case Class and Pattern Matching Example:-
+-------------------------------------------------
+--> Case class which has no arguments is called as case object. 
+
+Example:-
+--------
+trait SuperTrait
+case class caseclass1(a:Int, b:Int) extends SuperTrait
+case class caseclass2(a:Int) extends SuperTrait
+case class caseobject extends SuperTrait
+
+object mainObject() {
+	def main(args: Array[String]){
+		callCase(CaseClass1(10,10))  
+        callCase(CaseClass2(10))  
+        callCase(CaseObject)  	
+	}
+	
+	 def callCase(f:SuperTrait) = f match{  
+        case CaseClass1(f,g)=>println("a = "+f+" b ="+g)  
+        case CaseClass2(f)=>println("a = "+f)  
+        case CaseObject=>println("No Argument")  
+    }  
+
+}
+
+
+output:-
+------
+a = 10 b =10
+a = 10
+No Argument
+
+Scala Constructor:-
+-----------------
+--> In Scala, Constructor is not a Special method. Scala provides a Primary Constructor and many number of auxiliary Constructor.
+
+Scala Primary Constructor:-
+--------------------------
+--> In Scala, If you don't specify the primary Constructor, Compiler will creates the constructor is called as Primary Constructor. All the statement of the class body treated as part of the constructor. It is also called as Default constructor.
+
+class Student(id:Int, name:String){  
+    def showDetails(){  
+        println(id+" "+name);  
+    }  
+}  
+  
+object MainObject{  
+    def main(args:Array[String]){  
+        var s = new Student(101,"Rama");  
+        s.showDetails()  
+    }  
+}  
+
+output:-
+--------
+101 Rama
+
+Scala Secondary (auxiliary) Constructor:-
+-----------------------------------------
+--> we can create any no of auxiliary Constructor, you should call primary constructor from auxiliary constructor. "this" keyword is used to call constructor from other constructor.
+
+class Student(id:Int, name:String){  
+    var age:Int = 0  
+    def showDetails(){  
+        println(id+" "+name+" "+age)  
+    }  
+    def this(id:Int, name:String,age:Int){  
+        this(id,name)       // Calling primary constructor, and it is first line  
+        this.age = age  
+    }  
+}  
+  
+object MainObject{  
+    def main(args:Array[String]){  
+        var s = new Student(101,"Rama",20);  
+        s.showDetails()  
+    }  
+}  
+
+output:-
+101 Rama 20
+
+Scala Example: Constructor Overloading:-
+-----------------------------------------
+you can overload the constructor,
+
+class Student(id:Int){  
+    def this(id:Int, name:String)={  
+        this(id)  
+        println(id+" "+name)  
+    }  
+    println(id)  
+}  
+  
+object MainObject{  
+    def main(args:Array[String]){  
+        new Student(101)  
+        new Student(100,"India")  
+    }  
+}  
+
+output:-
+
+101
+100
+100 India
+
+Abstraction:-
+===========
+--> Abstraction is nothing but Elimination. Fetching only required information even though all information are available.
+
+Abstract Class:
+----------------
+1. Abstract class can be created by using abstract keyword. No need to create object for that class. methods and variables can be accessed by using class name.
+2. It will contain both abstract and non abstract methods.
+3. abstract methods does not have a implementation
+4. If you are inheriting abstract class, you should be implement all abstract methods using override keyword.
+
+Purpose of Abstraction:-
+------------------------
+1. To hide the complexity of the application 
+
+Real Time Examples:
+==================
+1. TV Remote, Laptop --> Button only showing, We can not see Circuit boards.
+
+Example:-
+------------
+
+abstract class Bike(a:Int){             // Creating constructor  
+    var b:Int = 20                      // Creating variables  
+    var c:Int = 25  
+    def run()                           // Abstract method  
+    def performance(){                  // Non-abstract method  
+        println("Performance awesome")  
+    }  
+}  
+  
+class Hero(a:Int) extends Bike(a){  
+    c = 30  
+    def run(){  
+        println("Running fine...")  
+        println("a = "+a)  
+        println("b = "+b)  
+        println("c = "+c)  
+    }  
+}  
+  
+object MainObject{  
+    def main(args: Array[String]){  
+        var h = new Hero(10)  
+        h.run()  
+        h.performance()  
+    }  
+}  
+Output:
+
+Running fine...
+a = 10
+b = 20
+c = 30
+Performance awesome
+
+Inheritance:-
+============
+Deriving a variable and methods from base class is called as Inheritance.
+
+1. Single Inheritance 
+2. Multilevel Inheritance
+3. Multiple Inheritance  -- Trait.
+
+Purpose of Inheritance:
+-----------------------
+--> Code re usability
+--> To use Polymorphism
+
+Real time Examples:
+====================
+Father and Son 
+
+Example:-
+-------
+class Employee{  
+    var salary:Float = 10000  
+}  
+  
+class Programmer extends Employee{  
+    var bonus:Int = 5000  
+    println("Salary = "+salary)  
+    println("Bonus = "+bonus)  
+}  
+  
+object MainObject{  
+    def main(args:Array[String]){  
+        new Programmer()  
+    }  
+}  
+Output:
+
+Salary = 10000.0
+Bonus = 5000
+
+Polymorphism:-
+=============
+One Interface, Many purpose
+
+Types:-
+-----
+1. Compile time Polymorphism (Method overloading)
+2. Run time Polymorphism (Method overriding)
+
+Real time Examples:
+===================
+1. Man --> works as a Husband/Son in home
+2. Man works as Employee in office
+
+Method Overloading:
+-------------------
+--> If Two methods are having same method name and different parameters in the same class, is called as Method overloading.
+--> If two or more method have same name and same parameter list but differs in return type are not said to be overloaded method
+	
+Purpose of Method Overloading:
+-----------------------------
+--> Code Readability
+
+Method Overriding:
+------------------
+--> When the method of Sub class is having the same name and same signature as a method in a Base class is called as Method overriding.
+
+Real Time Example:-
+------------------
+Main bank is declaring percentage of rate of interest. Following Banks are overriding the percentage of rate of interest.
+
+Purpose of Method Overriding:
+-----------------------------
+--> Code re usability
+
+class Vehicle{  
+    def run(){  
+        println("vehicle is running")  
+    }  
+}  
+  
+class Bike extends Vehicle{  
+     override def run(){  
+        println("Bike is running")  
+    }  
+}  
+  
+object MainObject{  
+    def main(args:Array[String]){  
+        var b = new Bike()  
+        b.run()  
+    }  
+}  
+Output:
+
+Bike is running
+
+Encapsulation:-
+==============
+	Encapsulation is nothing but data hiding from outside the world.
+	
+1. Private --> It can be Accessed with in the class
+2. Public --> It can be Accessed by every where in the project.
+3. Protected --> It can be Accessed by only base and derived class.
+
+Real time Examples:
+===================
+	Medical capsules --> Over layer protect the medicine inside.
+	
+Purpose:-
+---------
+--> To control the access your methods.
+
+Traits (Interface):-
+=====================
+--> Traits is nothing but just like Interface in Java. we can declare the methods, then you can extends into some other class or another Traits.
+	
+Trait BaseSoundPlayer 
+{
+	def play
+	def close
+	def pause
+	def stop
+	def resume
+}
+
+Extending Scala traits:-
+----------------------
+	If a class implements one trait it will use the extends keyword:
+
+class Mp3SoundPlayer extends BaseSoundPlayer {
+  def play   {}
+  def close  {}
+  def pause  {}
+  def stop   {}
+  def resume {}
+}
+
+One trait can extend another trait:
+
+trait Mp3BaseSoundFilePlayer extends BaseSoundFilePlayer {
+  def getBasicPlayer:BasicPlayer
+  def getBasicController:BasicController
+  def setGain(volume: Double)
+}	
+
+
+Trait Vs Interface:-
+---------------------
+1. In java, When you are inheriting Interface, you should use the keyword, Implements. But in Scala, you should use extends (There is no keyword of implements)
+2. In java, There is no method implementation for Interface methods, But in Scala, It accepts the Implementation in Traits.
+
+3. In Java, All methods of Interface should implemented in derived class.
+	But in Scala, If the method of Trait is having Implementation already, then no need to implement that method in derived class. 
+Note: when you are implementing base class method in derived class, you should use override keyword in derived class.
+
+Closures:-
+===========
+Closures is a function which return value is depends on one or more variables which are declared outside the function.
+
+Example:-
+
+Object student
+{
+	def main(args: Array[String])
+	{
+		default_mark=20;
+		
+		val Total_mark = (actual_mark : Int) => actual_mark + default_mark 
+	}
+
+}
+
+Functions:-
+===========
+	a) Function with call by Name --> Passing the function as Arguments 
+	b) Function with Named Arguments --> passing the parameters in different orders
+	c) Function with Variable arguments --> Declare the method with the parameter that accepts many no of arguments with same data type.
+ 	d) Function with Default Parameter values --> Declare the method with parameter which have default value
+	e) Nested function --> Function inside the function
+	f) Partially applied function --> Where ever we are finding _, It will be partially applied function.
+	g) Recursive function --> Function can call itself recursively 
+	h) Higher order function --> It is a function, which takes a function as a argument or return the function
+	i) Anonymous function --> Unknown type of function
+	j) Currying function --> Instead of passing all parameters in the Same bracket, Passing single value in Single bracket.
+	
+1. Function with call by Name:-
+-----------------------------
+--> It is nothing but passing a method as a parameter.
+
+object A
+{
+	def add(a:Int, b:Int)
+	{
+		return a+b
+		
+	def add(a:Int, b:Int, c:Int)
+	{
+		add(a,add(b,c))
+	}
+	
+	def main(args: Array[String])
+	{}
+
+		println("Output is" + add(10,20,30))
+	}
+}
+
+2. Function with Named Arguments:-
+----------------------------------
+--> Passing the arguments in different order.
+
+object Function_with_Named_Arguments {
+  
+  def add(a:Int,b:Int): Int = 
+  {
+    a+b    
+  }
+  
+  def main(args: Array[String])
+  {
+    println("The Result is " + add(b=10,a=45))
+    
+  } 
+  
+}
+
+3. Function with Variable arguments:-
+-------------------------------------
+--> Define method parameter, that can accept number of arguments as a parameter with Same data type.
+	(Declare the method with parameter that accepts many number of arguments as a parameter with Same data type)
+	
+object B
+{
+	def Student_Names(name : String*)
+	{
+		println("A Class - Student names are" + name)
+	}
+	
+	def main(args: Array[String])
+	{
+		Student_Names("Angesh","Jamuna","Gowtham")
+	}
+}
+
+4. Function with Default Parameter values:-
+--------------------------------------------
+We can specify default values for function arguments (Define the method with Default parameter value)
+	
+object Default_Parameter_Values {
+    
+  def add(a:Int = 3, b:Int = 10): Int = 
+  {
+    a+b    
+  }
+  
+  def main(args: Array[String])
+  {
+    println("Result is " + add())   
+  }
+  
+}
+
+5. Nested function:-
+--------------------
+--> Function defined inside of other function
+	
+object Nested_Function 
+{
+  def factorial(i: Int): Int = 
+  {
+      def fact(i: Int, accumulator:Int) : Int = 
+      {
+        if (i <= 1)        
+          accumulator
+        else
+          fact(i-1, i* accumulator)
+      }
+      
+      fact(i,1)    
+  }
+  
+  def main(args:Array[String])
+  {
+    println(factorial(4))
+    
+  }
+}
+
+6. Partially applied function:- GMAIL
+-------------------------------
+where ever you are finding _ , it is a partially applied function.
+
+object Partially_Applied_Function {
+  
+  var pfa = (x:String, y:String) => { x+y }
+  
+  var email = pfa(_: String, "@gmail.com")
+  
+  def main(args:Array[String])
+  {
+    
+    println(email("Anges"))
+  }
+  
+}
+
+7. Recursive function:-
+-----------------------
+Function can call itself repeatedly.
+	
+object Recursive_Function {
+  
+  def factorial(n:Int): Int = 
+  {
+      if(n <= 1)
+      {
+        n       
+      }
+      else
+        n * factorial(n-1)    
+  }
+  
+  def main(args: Array[String])
+  {
+     println(factorial(3))   
+  }
+  
+}
+
+8. Higher order function:-
+--------------------------
+--> Higher order function is a function either it takes another function as a argument or it returns a function. 
+In other words we can say, function which works with another function is called as Higher order function.
+
+HIgher order function allows you to create,
+
+1. Function Composition
+2. Lamda function
+3. Anonymous Function
+
+
+Anonymous function:- Unknown type of function
+------------------
+object A
+{
+	def main(args: Array[String])
+	{
+		var result1 = (a:Int, b:Int) => (a+b)
+		var result2 = (_:Int)+(_:Int)
+		println(result1(2,3))
+		println(result2(10,5))
+	}
+
+}
+ output:
+ 
+ 5
+ 15
+
+ 
+Currying function:-
+-------------------
+	Passing multiple arguments to the function instead of single argument in single bracket.
+It is useful when you want to pass less arguments even multiple parameters available in actual method.
+
+object A
+{
+	def add(a:Int)(b:Int)
+	{
+		a+b
+	}
+	
+	def main(args: Array[String])
+}
+
+Collections:-
+==============
+1. Its a collection of data, It contains both classes and Traits.
+2. It can be Mutable or Im-mutable. 
+
+   Mutable 	  --> We can add, remove and update the data. Scala.collection.mutable packages contains all mutable collection.
+   Im-mutable --> It does not allow to modify the data. Scala.collection.immutable packages contains all immutable collections.  
+   
+Scala Im-Mutable collection packages:-
+---------------------------------------
+Set --> TreeSet
+	--> SortedSet
+    --> HashSet
+	--> ListSet (All are abstract classes)
+
+Seq --> 
+
+Map
+
+
+Significant Methods:-
+---------------------
+def head: A --> Return first element of the collection
+def isEmpty : Boolean --> 	It checks whether the collection is empty or not. It returns either true or false.
+def last : A --> Return last element of the collection
+def sum : A --> Returns sum of all elements in the collection
+def min : A --> Returns Smallest elements in the collection
+def max: A --> Returns largest elements in the collection
+def size : A --> returns no of elements present in the collections
+def toArray : Array[A] --> Converts the collection to Array
+def toList : List[A] --> Converts the collection into list 
+def toSeq : Seq[A] --> Converts the collection into Sequence
+def toSet : Set[A] --> Converts the collection into Set
+
+Scala Set:-  (Im-Mutable)
+----------
+1. Its a collection of data, which does not allow any duplicates to store it.
+2. It does not maintain any order for storing elements.
+3. It comes under Scala.collection.immutable packages.
+
+Scala Set Syntax:-
+-----------------
+Val variableName : Set[Type] = Set(element1,element2,...element n)
+or
+Val variableName = Set(element1,element2,...element n)
+
+Scala Set Examples:-
+--------------------
+
+import Scala.collection.immutable._
+
+object Set_sample extends App{
+	val games = Set("Cricket","FootBall","Hocky","Golf")
+	println(games)
+}
+
+output:-
+--------
+Cricket
+FootBall
+Hocky
+Golf
+
+Scala Set examples with Predefined methods:-
+--------------------------------------------
+import Scala.collection.immutable._
+
+object Set_sample extends App{
+	val games = Set("Cricket","FootBall","Hocky","Golf")
+    println(games.isEmpty) --> False
+	println(games.head) --> Cricket
+	println(games.last) --> Golf
+}
+
+Scala Set Examples with merge two dataset:-
+-------------------------------------------
+import Scala.collection.immutable._
+
+object Set_sample extends App{
+	val games = Set("Cricket","FootBall","Hocky","Golf")
+	val numbers = Set(1,2,3,4)
+    val mergeSet = games ++ numbers
+	println("Number of elements --> " mergeSet.size)
+	println(mergeSet)
+}
+
+output:-
+--------
+1, Cricket,2,FootBall,3,Hocky,4,Golf
+8
+
+Scala Set Examples with Exists:-
+-------------------------------
+import Scala.collection.immutable._
+
+object Set_sample extends App{
+	val games = Set("Cricket","FootBall","Hocky","Golf")
+	println("Golf exists in the games list --> " mergeSet.contains("Golf")) --> true
+}
+
+Adding and Removing elements in the Set:-
+-----------------------------------------
+import Scala.collection.immutable._
+
+object Set_sample extends App{
+	val games = Set("Cricket","FootBall","Hocky","Golf")
+	games += "Racing" //Adding new element
+	games += "Cricket"  //does not allow to add it
+	games -= "Racing" //Removing element
+}
+
+
+Iterating Set Elements using for loop and foreach loop:-
+--------------------------------------------------------
+import Scala.collection.immutable._
+
+object Set_sample extends App{
+	val games = Set("Cricket","FootBall","Hocky","Golf")
+	for(game <- games)
+		println(game)
+}
+
+import Scala.collection.immutable._
+
+object Set_sample extends App{
+	val games = Set("Cricket","FootBall","Hocky","Golf")
+	games.foreach(game: String) println(game)
+}
+
+Intersect and Union:-
+--------------------
+
+import scala.collection.immutable._  
+object MainObject{  
+    def main(args:Array[String]){  
+        var games = Set("Cricket","Football","Hocky","Golf","C")  
+        var alphabet = Set("A","B","C","D","E","Golf")  
+        var setIntersection = games.intersect(alphabet)  
+        println("Intersection by using intersect method: "+setIntersection)  
+        println("Intersection by using & operator: "+(games & alphabet))  
+        var setUnion = games.union(alphabet)  
+        println(setUnion)  
+    }  
+}  
+
+Intersection by using intersect method: Set(Golf, C)
+Intersection by using & operator: Set(Golf, C)
+Set(E, Football, Golf, Hocky, A, B, C, Cricket, D)
+
+
+Scala SortedSet:-
+---------------
+It is used the sort the elements in Set.
+
+import Scala.collection.immutable.SortedSet
+
+import scala.collection.immutable.SortedSet              
+object MainObject{  
+    def main(args:Array[String]){  
+        var numbers: SortedSet[Int] = SortedSet(5,8,1,2,9,6,4,7,2)  
+        numbers.foreach((element:Int)=> println(element))  
+    }     
+}  
+
+output:-
+-------
+1
+2
+4
+5
+6
+7
+8
+9
+
+
+Hash Set:-   
+----------
+1. HashSet is a Sealed class which uses hash code to store elements.
+2. It does not allow duplicates to store it.
+2. It extends from Scala.collection.immutable class. 
+3. It neither maintains insertion order or sort the elements.
+
+import scala.collection.immutable.HashSet  
+object MainObject{  
+    def main(args:Array[String]){  
+        var hashset = HashSet(4,2,8,0,6,3,45)  
+        hashset.foreach((element:Int) => println(element+" "))     
+   }  
+} 
+
+0 
+6 
+2 
+45 
+3 
+8 
+4
+
+Scala ListSet:-
+---------------
+List Set is used to store the Elements in an insertion order, 
+
+1. Elements are stored internally in reverse insertion order, which means newest elements are stored newly. 
+2. It maintains the insertion order.
+3. This collection is suitable for small datasets.
+
+import scala.collection.immutable._  
+object MainObject{  
+    def main(args:Array[String]){  
+        var listset = ListSet(4,2,8,0,6,3,45)  
+        listset.foreach((element:Int) => println(element+" "))  
+    }  
+} 
+
+output:-
+-------- 
+4 
+2 
+8 
+0 
+6 
+3 
+45
+
+Seq:- (Sequence)
+-----------------
+Seq is a collection of data which represents indexed sequences, we can access the elements by using their indexes,
+It maintains the insertion order of elements.
+
+import scala.collection.immutable._  
+object MainObject{  
+    def main(args:Array[String]){  
+        var seq:Seq[Int] = Seq(52,85,1,8,3,2,7)  
+        seq.foreach((element:Int) => print(element+" "))  
+        println("\nAccessing element by using index")  
+        println(seq(2))  
+    }  
+}  
+
+output:-
+---------
+52 85 1 8 3 2 7 
+Accessing element by using index
+1
+
+
+Scala Maps:-
+-----------
+Map is used to store the elements in the pair of key and values.
+We can create a map in two ways, Comma separated pairs and using rocket operator.
+
+object MainObject{  
+    def main(args:Array[String]){  
+        var map = Map(("A","Apple"),("B","Ball"))  
+        var map2 = Map("A"->"Apple","B"->"Ball")  
+        var emptyMap:Map[String,String] = Map.empty[String,String]   
+        println(map)  
+        println(map2)  
+        println("Empty Map: "+emptyMap)  
+    }  
+}  
+
+output:-
+-------
+Map(A -> Apple, B -> Ball)
+Map(A -> Apple, B -> Ball)
+Empty Map: Map()
+
+Scala Map Example: Adding and Removing Elements:-
+-------------------------------------------------
+object MainObject{  
+    def main(args:Array[String]){  
+        var map = Map("A"->"Apple","B"->"Ball")             // Creating map  
+        println(map("A"))                            // Accessing value by using key  
+        var newMap = map+("C"->"Cat")                  // Adding a new element to map  
+        println(newMap)  
+        var removeElement = newMap - ("B")                // Removing an element from map  
+        println(removeElement)  
+    }  
+}  
+
+output:-
+---------
+Apple
+Map(A -> Apple, B -> Ball, C -> Cat)
+Map(A -> Apple, C -> Cat)
+
+Scala Hash Map:-
+---------------
+Hash map is used to store the elements, it uses the hash code to store the elements.
+
+import scala.collection.immutable._  
+object MainObject{  
+    def main(args:Array[String]){  
+        var hashMap = new HashMap()  
+        var hashMap2 = HashMap("A"->"Apple","B"->"Ball","C"->"Cat")  
+        println(hashMap)  
+        println(hashMap2)  
+    }  
+} 
+
+output:-
+-------
+Map()
+Map(A -> Apple, B -> Ball, C -> Cat)
+
+Scala HashMap Example: Adding and Accessing Elements:-
+---------------------------------------------------------
+import scala.collection.immutable._  
+object MainObject{  
+    def main(args:Array[String]){  
+        var hashMap = HashMap("A"->"Apple","B"->"Ball","C"->"Cat")  
+        hashMap.foreach {  
+            case (key, value) => println (key + " -> " + value)       // Iterating elements  
+        }  
+        println(hashMap("B"))               // Accessing value by using key  
+        var newHashMap = hashMap+("D"->"Doll")  
+        newHashMap.foreach {  
+            case (key, value) => println (key + " -> " + value)  
+        }  
+          
+    }  
+}  
+
+output:-
+------
+A -> Apple
+B -> Ball
+C -> Cat
+Ball
+A -> Apple
+B -> Ball
+C -> Cat
+D -> Doll
+
+Scala ListMap:-
+-------------
+	It is used to store the elements in the pair of key and values. It maintains the insertion order. Suitable for small dataset.
+
+	
+import scala.collection.immutable._  
+
+object MainObject{  
+    def main(args:Array[String]){  
+        var listMap = ListMap("Rice"->"100","Wheat"->"50","Gram"->"500")    // Creating listmap with elements  
+        listMap.foreach{  
+            case(key,value)=>println(key+"->"+value)  
+        }  
+        println(listMap("Gram"))  
+        var newListMap = listMap+("Pulses"->"550")  
+        newListMap.foreach {  
+            case (key, value) => println (key + " -> " + value)  
+        }     
+    }  
+}  
+
+output:-
+---------
+Rice->100
+Wheat->50
+Gram->500
+500
+Rice -> 100
+Wheat -> 50
+Gram -> 500
+Pulses -> 550
+
+How to choose a Map implementation in Scala (Map, ListMap, LinkedHashMap, SortedMap, TreeMap):-
+------------------------------------------------------------------------------------------------
+
+SortedMap:- if you want to sort the elements of values based on keys, we can use SortedMap.
+LinkedHashMap --> If you want to maintain the insertion order, we can use the linkedHashmap
+
+import scala.collection.SortedMap
+
+val grades = SortedMap("Kim" -> 90,
+     | "Al" -> 85,
+     | "Melissa" -> 95,
+     | "Emily" -> 91,
+     | "Hannah" -> 92
+     | )
+	 
+grades: scala.collection.SortedMap[String,Int] = Map(
+  Al -> 85, 
+  Emily -> 91, 
+  Hannah -> 92, 
+  Kim -> 90, 
+  Melissa -> 95
+)
+
+
+Scala Tuple:-
+------------
+	Tuple is used for store the elements in the form of any data type. you can store single data type and mix also.
+	
+object MainObject{  
+    def main(args:Array[String]){  
+        var tupleValues = (1,2.5,"India")  
+        println("iterating values: ")  
+        tupleValues.productIterator.foreach(println)    // Iterating tuple values using productIterator  
+        println("Accessing values: ")  
+        println(tupleValues._1) // Fetching first value  
+        println(tupleValues._2) // Fetching second value  
+    }  
+}  
+
+
+output:-
+
+iterating values: 
+1
+2.5
+India
+Accessing values: 
+1
+2.5
+
+Scala Tuple Example: Function Return Multiple Values:-
+-------------------------------------------------------
+object MainObject{  
+    def main(args:Array[String]){  
+        var tupleValues = tupleFunction()  
+        println("Iterating values: ")  
+        tupleValues.productIterator.foreach(println)    // Iterating tuple values using productIterator  
+    }  
+    def tupleFunction()={  
+        var tuple = (1,2.5,"India")  
+        tuple  
+    }  
+}  
+
+output:-
+
+Iterating values: 
+1
+2.5
+India

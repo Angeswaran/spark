@@ -1,0 +1,18 @@
+1. Kyro
+2. Cache and Persistence
+3. Reduce Shuffling
+4. Setting proper No of Executors, Executor core, Executor Memory, Driver memory
+5. 
+
+
+
+Stateless --> It does not depends on Another batch --> Gives current batch results
+Statefull --> One batch depends on Another bacth (a,2) --> Previous batch 
+												 (a,3) --> Current Batch --> (a,5) Aggregating the elements
+												 
+Driver Failures --> Checkpointing
+
+Checkpointing Interval --> Duration for creating batches
+
+Worker Failures --> Work Ahead log (WAL)
+												 

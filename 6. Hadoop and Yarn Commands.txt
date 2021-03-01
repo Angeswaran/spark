@@ -1,0 +1,93 @@
+Hadoop Commands: (Hadoop 1.0)
+=============================
+https://hadoop.apache.org/docs/r1.2.1/commands_manual.html
+
+1. Archive
+	hadoop archive -archiveName test.har -p /home/datadotz/Files/* /home/datadotz/ArchivedFiles/
+	
+	How to look up archived files
+	
+	hadoop fs -ls har:///home/datadotz/ArchivedFiles/test.har 
+	
+2. distcp --> Copy files and directories recursively
+
+	hadoop distcp <srcURL> <destURL> 
+	
+3. jar --> Create a Jar file 
+
+	hadoop jar <jarName_WithPath> <MainClassName> <Args>
+
+4. Job --> Command to Interact with the Jobs.
+
+	hadoop job -submit <job_file>
+	
+	hadoop job -status <job_id> --> Showing the status of the Job
+	
+	hadoop job -kill <job_id>  --> Kill the job
+	
+	hadoop job -list --> list out all jobs which are yet to complete
+	
+	hadoop job -kill-task <task_id> --> Kill the Task and it will not be counted in failed attempts.
+	
+	hadoop job -fail-task <task-id> --> Fails the task and it will be counted in failed attempts.
+	
+	hadoop job -set-priority <job_id> <priority> --> Change the priority of the job, Allowed priority Values are VERY_HIGH, HIGH, NORMAL, LOW,VERY_LOW
+	
+5. Queue --> Know about Queue information
+
+	hadoop queue -list --> shows list of queues configured in the CLuster.
+	
+	hadoop queue -info <job_queue_name> [-showJobs] --> Displays the Queue information. If showJobs is set, It will show, list of job submitted to the particular Queue is displayed.
+	
+6. Version 
+
+	hadoop version
+	
+	
+Hadoop 2.0 Commands:
+====================
+
+https://hadoop.apache.org/docs/stable/hadoop-yarn/hadoop-yarn-site/YarnCommands.html
+
+1. application:- --> Hadoop job in YARN is called as application
+
+	yarn application -list --> list out all jobs
+	
+	yarn application -kill <Appplication_id> --> kill the job
+	
+	yarn application -status <Appplication_id> --> prints the status of the application
+	
+	
+2. Container:- Prints the container report
+	
+	yarn container -list <application_attempt_Id>
+	
+	yarn container -status <container_Id> --> status of Container
+	
+3. logs
+
+	yarn logs -applicationId <application_id>
+	
+	yarn logs -appOwner  
+	
+	
+4. Queue
+
+	yarn queue status --> prints the status of Queue.
+	
+5. version
+
+	yarn version
+	
+6. node --> Prints node reports
+
+	yarn node -all --> list out all nodes
+	
+	yarn node -list --> List out all running nodes
+	
+	yarn node -status --> prints the status of the node
+	
+7. jar --> runs the jar file.
+
+	yarn jar <jar_name> [Main_class] args
+	

@@ -1,0 +1,161 @@
+What is No SQL Databases?
+=======================
+	No SQL is a database which is used to store and Retrive the data rather than RDBMS
+
+CAP Therom:-
+==============
+Consistency --> All nodes can see the same data at the same time.
+Availablity --> Every request should receives the response whether it is successful or failure.
+Partition tolerance --> System should operate even any failure.
+
+Advantages of No-SQL databases?
+===============================
+1. Schema free, 
+2. Replication  
+3. Consistency.
+
+Types of No-SQL:-
+=================
+1. Column oriented database --> Cassandra
+2. Key value oriented
+3. Document oriented database
+4. Graph Oriented
+
+Cassandra Introduction:-
+========================
+ 	Cassandra is a No sql database which is designed to the large amount of Structured data.
+and It provides High availablity with no Single point of failure.
+
+Commericial Vendor --> DataStax
+
+Advantages of Cassandra?
+========================
+1. Column oriented database.
+2. Replication  
+3. Consistency.
+
+Architecture of Cassandra:-
+===========================
+	1. Cassandra is designed Based on Peer to Peer Architecture. All the nodes in Cassandra cluster play the same role and Each node is Interconnected with each other.
+	2. Each Node in the cluster is accept Read and Write operation. If any node goes down, Read/Write operation will be served to Other node.
+
+Components of Cassandra:
+========================
+1. Node --> Node is a machine which is used to store the data.
+2. Data Center --> Collection of Nodes
+3. Cluster --> Group of Data center.
+4. Commit log --> Commit log is a Crash Recovery Machanism in Cassandra. Every Write operation is written to the commit log
+5. Mem-Table --> Mem-table is a Memory Resilient Data structure. After Commit log, data will be written to Mem-table. Sometimes, for Single column family There will be a Multiple Mem-table.
+6. SS Table (Sorted String) --> It is a file, which the data is flushed from mem table when its contents reaches a threshold values.
+7. Bloom filter --> helps to identify if a partition key may exist in its corresponding SSTable.
+8. Partition Key --> Each table is having a Partition key, That helps to identify which node in the cluster the data should be stored.
+9. Compactions --> Process of Merging Multiple SS Table into Single SS Table.
+10. Gossip --> Using Gossip, The Nodes in the Cluster are Communicating Each Other.
+11. Co-ordinator Node --> The Node which is coordinates Read and write operations.
+
+Replication in Cassandra:-
+========================
+During the Write operations, data will be replicated to another nodes. When the data is requesting, Cassandra will compare the data which is having the most updated data and provide the latest data to Client and update the recent data inside the cluster
+
+Replica Placement Strategy:-
+===========================
+1. Simple Strategy (Rack Aware Strategy) --> ata will be replicated to same data center 
+2. Network Strategy (data center - shared strategy) --> Data will be replicated to multiple data center
+
+How partitioned is handling in Cassandra?
+==========================================
+	Cassandra is a Peer to Peer Architecture, So in any machine, you can request for read and Write operation. All writes being partitioned and replicated to Multiple machines automatically through out the cluster Based on the Partitioned Key and Hash value.
+
+	During the Insert operation, hash function is applied to partitioned key and get the hash value. Based on the hash value range, data will be partitioned to that corresponding nodes.
+
+How consistency is maintained?
+===============================
+	Consisitency is nothing but all nodes in the cluster should have a updated records.
+
+Two types Consisitency available,
+a) Eventual Consisitency --> When you are reading the data,you may read old data is called as Eventual Consistency. Read repair will be done after returning results
+b) Strong Consistency--> When you are reading the data,you can get updated data is called as Strong Consistency. Read repair will be done before returning results
+
+Write Consistency:
+==================
+Any --> Write should succeeed on any available node.
+One --> Write should succeeed on one available node.
+Quorum --> RF/2 +1
+Local_Quorum --> Write should succeed on the Quorum of replica nodes  in the same data center.
+Each_Quorum --> Write should succeed on the Quorum of replica nodes  in the all data centers.
+All --> Write should succeed on all nodes.
+
+Read Consistency:
+=================
+One --> Read data from closest node that holding the data
+Quorum --> return the data from Quorum of server with most recent timestamp for the data.
+Local_Quorum --> return the data from Quorum of server with most recent timestamp for the data  in the same data center.
+Each_Quorum --> return the data from Quorum of server with most recent timestamp for the data in the all data centers.
+All --> Cassandra will compare data with all nodes for recent timestamp for the data.
+
+Cassandra Operations;-
+==================
+1. Write operations:-
+	During the Write operation, the data will be written to Commit Log for data receovery and also the data will be written to Memtable. Once Mem-table is filled, the MemTable data will be flushed to SS Table.
+All the data will be partitioned and Replicated inside the cluster automatically.
+
+2. Read Operations:-
+	During the Read operations, Cassandra first checks, The particular column family data present in MemTable or not, If not found, Cassndra will read all SS Tables for That Column Family.
+To optimize reads, Cassndra will use Bloom Filters to Identify, That partition key is exists in SS Table or not.
+				   Cassandra will use Index in SS table for Locate the data fast.
+				   Compaction will be used to Merge all SS Tables into Single SS Table.
+
+3. Read Repair;-
+	Cassandra ensures All data are Consistent. Once Read is completed, the coordinator node compares the data from all remaining replicas whether all are having Consistent Data, if not update will be happend.
+
+4. Update Operations:-
+	Using Time to Live option to Maintain the update operations.
+
+
+5. Delete operation:
+	SSTable are Im-Mutable, we can not delete the data. So When the row need to be deleted, Cassandra will assigns common value to Special value called as TomStone. When reading the data, tomstone value will be considered as deleted.
+
+nodetool flush 
+Each Flush, new SStable will be created.
+
+What is Super column in Cassandra?
+	Supercolumn is a collection of Key value pair. 
+
+Difference Between Column and Super columns?
+	Columns can be created by single datatype, where as Super column is created by Map. (different data types)
+
+
+Queries and Commands to be used:-
+==================================
+List All the keySpaces:-
+select * from system.schema_keyspaces;
+
+create KeySpace:-
+create keyspace demo with Replication = {'class': 'Simple Strategy', 'replication_factor': 3}
+
+Describe KeySpace:-
+describe keyspace demo;
+
+Create Table (Column-Family):-
+create table demoInfo (sno int, name varchar, gender varchar, primary key (sno));
+
+Describe Table:-
+describe table demoInfo
+
+Insert Data:-
+Insert into demoInfo (sno, name, gender) values(1, 'hellow', 'male');
+
+Select All:-
+select * from demoInfo;
+
+TTL (Time to LIve):-
+Insert into demoInfo (sno, name, gender) values(1, 'hellow', 'male') using ttl 43200;
+
+
+
+
+
+
+
+
+

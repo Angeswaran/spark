@@ -1,0 +1,45 @@
+This project has been done for client of MBS.
+
+MBS is a Casino industry. where it has Table games and slot games are playing across the floor.
+
+This project belongs to Tables games, 
+
+The problem is Some day patrons are playing most of the games, and Other days patrons are not interested to play those games. we need to find out the reason why they are not interested in playing games.
+
+So the purpose of the project is find out a most played games and least played games in pit across each floors and load those most played games into most of the tables and Business people will take care of least played games how to improve those things. 
+
+Project flow like, Data is avilable in two sources, one is Teradata which has a transactional data. Another one is Oracle which has Master data.
+
+The data from Teradata will be Sqooped to Landing stage (Raw) using Sqoop. This is called as Raw Layer.
+
+In this Raw layer, Remove the duplicates,junk values and cliencing process will be happened, After the data will be loaded to stagging. (Spark Dataframe)
+
+Here we are maintaining the history based on the ingestion datetime. We are filtering the required columns from the required tables will be fetched and loaded to Target layer. (Only Periodic data - 6 months)
+
+Apply Business logic on top of the Target layer data and result will be loaded to Consumption layer. 
+
+From Consumption layer, the data will be sqooped to SQL Server and they have front end application to view the results.
+
+Business people will take the most played games and loading to most of the tables. 
+
+About my Business logics, Business people are defining points for each game types in Pit, If the result reached the limit, then it will be most played games. and based on parcentage reached for all games types. Points will be allocated for that game type like that.
+=================================================================================================
+
+Initial data - 3 months
+Incremental data - 7 days.
+Process period - 15 days
+
+1 days -> 10 GB of data.
+15 days --> 150 GB
+
+Day to day Activities:
+=========================
+1. Loading the data from various sources like separate game types.
+2. Implementing the business logics to the hive layer data and result will be stored to RDBMS.
+
+
+
+for 3 months --> around 1 TB of data.
+
+
+ 

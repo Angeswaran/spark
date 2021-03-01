@@ -1,0 +1,167 @@
+Casandra and Hive:-
+----------------------
+
+Cassandra Tables:
+=================
+	Spark SQL supports reading and Writting the data in Cassandra 
+
+Configuration:
+==============
+1. Copy the Cassandra.yaml file to Spark conf folder
+2. Add the Cassandra connector jar path to spark-env.sh file by,
+ export SPARK_CLASSPATH=/home/datadotz/Cassandra-connector.jar to Spark-env.sh file.
+
+Simple Program:
+==============
+object test
+{
+   
+   def main(args: Array[String])
+   {
+	val conf = new SparkConf().SetAppName("Appilication1")
+	val sc = new SparkContext(conf)
+	val sqlContext = new SQLContext(sc)
+	
+	case class Employee(empid:Int,Ename:String,deptID:Int)
+
+	case class Department(deptID:int,deptname:String)
+
+	case class EmpDept(empid:int,Ename:String,deptName:String)
+
+	Val employee = sc.CassandraTable[Employee]("dbname","TableName").cache
+
+	Val department	sc.CassandraTable[Department]("dbname","TableName").cache
+
+	Val empl_bydepartID = employee.keyBy(f => f.deptID)
+	Val dep_depID = department.keyBy(f => f.deptID)
+	
+	//Join the tables by DeptID
+	Val JoinedDepartment = empl_bydepartID.join(dep_depID).cache
+	
+	//Create RDD with new result with mapping columns
+	Val newRDD = JoinedDepartment.map(f => EmpDept(f.))
+
+	//Get the Top 10 results
+	val top10 = newRDD.collect.toList.sortBy(_.DepID).reverse.take(10)
+
+	Val newRdd1 = sc.parallelize(top10)
+
+	//Save to Cassandra
+	newRdd1.saveToCassandra("dbname","Tablename",SomeColumns("column1","Column2"))	
+	
+    }
+}
+
+
+Hive Tables:
+============
+	Spark SQL Supports reading and Writting the data stored in hive.
+
+Configuration:
+=============
+1. Copy hive-site.xml to Spark/conf/hive-site.xml
+2. Add the My sql connector jar path to spark-env.sh file by,
+   export SPARK_CLASSPATH=/home/datadotz/mysql-connector.jar to Spark-env.sh file.
+
+3. Extract hive-0.13.0 and change hive_home to Hive-0.13.0
+4. MySQL connector jar to hive-0.13.1/lib folder
+
+Simple Program:
+===============
+
+object test
+{
+   
+   def main(args: Array[String])
+   {
+	val conf = new SparkConf().SetAppName("Appilication1")
+	val sc = new SparkContext(conf)
+	val sqlContext = new HiveContext(sc)
+	
+	//Accessing data in hive
+	sqlContext.sql("Create table if not exists emp(id int,name string")
+	sqlContext.sql("load data local inpath 'path' into table emp")
+
+	Val employeedf = sqlContext.sql("select * from emp").collect().foreach(println)	
+	
+	//Writting the data to hive table
+	employeedf.write.mode(saveMode.append).saveAsTable("emp")
+	
+    }
+}
+
+Data Frame:-
+------------
+Simple Program:
+===============
+
+object test
+{
+   case class Emp(empid:Int,EmpName:String)
+   
+   def main(args: Array[String])
+   {
+	val conf = new SparkConf().SetAppName("Appilication1")
+	val sc = new SparkContext(conf)
+	val sqlContext = new SQLContext(sc)
+
+	Val Employee = sc.textFile(path)
+	Val Columns = Employee.split(f => f.split(","))
+	
+	Val SchemaRdd = Columns.map(p => Emp(p(0).toInt,p(1))
+	
+	Val Employeedf = SchemaRdd.toDF()
+	
+Query by Data frame language:
+===============================
+	Employeedf.printSchema()
+	Employeedf.select("id").show()
+	Employeedf.filter("id" = 1).show()
+	Employeedf.drop(Employeedf.col("id")).collect()
+	Employeedf.add(Employeedf.col("Marks")).collect()
+
+Query by Spark SQL:
+====================	
+
+	Employeedf.registerTempTable("Employee")	
+	Val Query = sqlContext.sql("Select * from Employee")
+	
+	Query.collect()
+
+   }
+}
+
+Schema Merging:
+===============
+	User can start with simple schema, We can add more columns to the schema as needed.
+The Perquet data source is now able to detect this case automatically and merge the schema of all these fields.
+
+schema merging is a relatively expensive operation, and is not a necessity in most cases,
+
+It turned off by default, we can enable by,
+
+spark.sql.parquet.mergeSchema = true.
+
+Metadata Refreshing:
+===================
+Spark sql caches perquet meta data for better performance. When hive metastore perquet table conversion is enabled, meta data of the perquet table also to be cached. So we need to refresh them manually to ensure the consistent data.
+
+sqlContext.refreshTable("TableName")
+
+Performance Tunning:
+====================
+	We can improve the performance by Caching data in memory or tunning some experimental options.
+
+Caching data in Memory:
+=======================
+1. Spark SQL can cache the tables using in-memory columnar format by calling sqlContext.cacheTable("tablename")
+or dataframe.cache() then Spark SQL will scan only required columns and automatically minimize the memory usage and GC pressure. we can call sqlContext.uncacheTable("tablename") to remove the table from memory.
+
+Two property we have set,
+
+spark.sql.inmemorycolumnstorage.compressed=true;
+spark.sql.inmemorycolumnstorage.batchsize=10,000;
+
+2. We can shuffle as possible, for example Join case, you broadcast the data instead of applying Join directly.
+
+3. We can set same partition for joined tables.

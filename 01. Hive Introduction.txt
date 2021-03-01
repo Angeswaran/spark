@@ -1,0 +1,117 @@
+Hive is relased by Facebook.
+Version - hive-1.2.1
+
+What is Hive?
+--------------
+1. Hive is an abstraction of Map reduce which is build on top of Map reduce.
+2. Hive is not a database. It is Query Engine, It uses Hive query language.
+
+Hive Components:-
+-----------------
+1. Hive CLI
+2. Hive Thrift Server
+3. Hive Web Interface
+
+a) Driver  --> Metastore --> RDBMS
+
+b) Mapreduce, Tez, Spark
+
+c) HDFS
+
+Internal working:-
+------------------
+1. The Query is submitted to hive client, It will check the schema in Metastore. Based on schema, It will generate the Mapreduce job internally and submitted to the YARN cluster.
+2. YARN will execute the job and get the results from HDFS and give it to hive client.
+
+Meta store:
+===========
+	Meta data stored in a database is called as Metastore.
+Default Metastore --> metastore_db.
+
+Types of Metastore:
+===================
+1. Embedded Metastore --> Driver, Metastore, Database are running in a Single JVM is called as Embedded metastore.
+2. Local Metastore --> Driver and Metastore are running in a Single JVM and Database is connected locally is called as Local Metastore.
+3. Remote Metastore --> Driver and Metastore are running in a different JVM and remotely connected with database is called as Remote metastore.
+
+To make a Local metastore:
+==========================
+1. Add hive-site.xml file to conf folder
+2. 4 properties have to add in hive-site.xml file, 
+	a) Connectionurl
+	b) ConnectionDriverName
+	c) ConnectionUserName
+	d) ConnectionPassword
+
+Default HDFS Path --> user/hive/warehouse
+
+Hive CLI and Beeline CLI:
+=========================
+Hive CLI is connected to Hive server 1, Can not able to connect more than one CLI.
+Beeline CLI is connected to Hive server 2, Can able to connect multiple client.
+
+Variable Substitution:
+========================
+	It is used for avoid important value to be hard coded.
+It will be implemented by --hiveconf parameter.
+
+we can pass the value from outside the query.
+
+Ex:
+Set hive.variable.substitution = true;
+
+hive> set CURRENT_DATE='2012-09-16';
+hive> select * from Employee where day >= '${hiveconf:CURRENT_DATE}'
+
+Similarly, you could pass on command line,
+
+> hive -hiveconf CURRENT_DATE='2012-09-16' -f test.hql
+
+Hcatalog:
+=========
+	Hcatalog is the metadata management of Hadoop File system. Whatever the tables created in hcatalog can be accessed through hive and pig.
+Hcatalog can be built on top of hive. 
+
+I have a table in hive ,TABLE NAME is STUDENT which is stored in one of the HDFS location:
+
+neethu  90
+malini  90
+sunitha 98
+mrinal  56
+ravi    90
+joshua  8
+
+Now suppose I want to load this table to pig for further transformation of data, In this scenario I can use HCATALOG:
+
+When using table information from the Hive metastore with Pig, add the -useHCatalog option when invoking pig:
+
+pig -useHCatalog
+
+(you may want to export HCAT_HOME 'HCAT_HOME=/usr/lib/hive-hcatalog/')
+
+Now loading this table to pig: A = LOAD 'student' USING org.apache.hcatalog.pig.HCatLoader();
+
+Now you have loaded the table to pig.To check the schema , just do a DESCRIBE on the relation.
+
+DESCRIBE A
+
+Compression technique:
+======================
+It is used to compress the data and stored it in HDFS.
+
+Default compression is GZip.
+	
+	Different Compression Techniques:-
+	--------------------------------
+	--> gzip
+	--> bzip2
+	--> snappy 
+	--> LZO
+	--> ZLIP (ORC + ZLIP)
+	
+How to enable compression:-
+--------------------------
+set hive.exec.compress.output=true;
+
+set mapred.output.compress.codec= (format we can mentuion it)
+

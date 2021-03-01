@@ -1,0 +1,26 @@
+======
+UDF:-
+======
+	Hive is having some default Build in Functions. If your requirement is not satisfied with these build in functions, then you need to write UDF's to achieve your requirement. 
+
+
+import org.apache.hadoop.hive.ql.exec.UDF
+
+Public class MyUDF extends UDF 
+{
+	Public Text evaluate(Text Value)
+	{
+		String IncomingValue = Value.toString();
+		Text Result = new Text(IncomingValue.toUpper());
+		return Result;
+	}
+}
+
+Do Export and create jar file.
+
+add jars MyUDF;
+List jars;
+
+Create Temporary Function MyUpper 'PackageName.className'
+
+select name, MyUpper(Dept) from Student;

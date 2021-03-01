@@ -1,0 +1,30 @@
+Window Functions:-
+------------------
+1. Lead 		--> Lead function is used to return the data from next row. (Second Row to First)
+2. Lag			--> The LAG function is used to return the data from a previous row. (First Row to Second)
+3. First_Value  --> Group and fetch first value.
+4. Last_Value   --> Group and fetch Last value.
+
+
+lead(sal,1,0) over(order by sal) as Post_salary --> Second row to first
+
+Lag(sal,1,0) over(order by sal) as pre_salary  --> First to second
+
+First_Value(sal) over(partition by deptno order by sal) as Highest_In_Dept --> Group and fetch first value.
+
+Last_Value(sal) over(partition by deptno order by sal) as Lowest_In_Dept --> Group and fecth Last value.
+
+Analytical Functions:-
+-----------------------
+1. Rank        --> used to assign a rank in a Group of Records
+2. Dense_Rank  --> same like rank() except It assigns consecutive ranks
+3. Row_Number  --> Used to assigns a unique number to each row.
+
+Rank() over(partition by deptno order by sal) as rank --> We need to assign a Sequential order with in the department based on salary
+
+Dense_Rank() over(partition by depno order by Sal) as dense_rank --> Just like a Rank, Except It assigns Consecutive ranks.
+
+Row_Number() over(partitioned by depno order by Sal) as RowNumber --> 
+
+Percent_rank() over
+

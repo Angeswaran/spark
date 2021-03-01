@@ -1,0 +1,729 @@
+Data warehouse domain is divided as Storage, Analysis and Statistics.
+	a) For Storage we have a RDBMS, No sql and distributed file system (HDFS,s3,Casandra file system)
+	b) For Analysis, we are having Batch and Stream process, Hadoop is used for batch process and Storm is used for Streaming process.
+	c) Statistics is all about data mining and predictive analysis. Its all about mathematical values.
+	
+What is Spark?
+---------------
+1. Spark is a Processing tool, which is used for processing datasets in parallel across the cluster.
+2. Scala is a native language for spark
+
+Why we go for Spark?
+--------------------
+1. Unified Engine for Batch and Stream - Hadoop needs separate tools for Batch and Stream processing. Hadoop is for Batch process and Storm is for Stream process. But in Spark Supports both batch and stream process.
+2. Speed - Normally Map reduce process the data from the disk, but not in memory. In Spark can process the data from the memory. If spark process the data from memory, then Spark will be 100 times faster than Map reduce. Suppose huge amount of data, memory will not be sufficient. So It will process the data from disk, That time also spark will be 10 times faster than Map reduce.
+3. No Intermediate Storage - In Map reduce, Mapper output will be stored temp location of the mapper and Second mapper will read the data from that location and so on. It will cause High disk IO, Time, Cost is more for processing, But in Spark, No intermediate storage happened. It will keep mapper output in in-memory, Second mapper will read the data from that memory.
+4. Interactive - I am running one query like Select * from patient, it will run the map reduce job and again I am running the same job and it will run again map reduce job. It is not good. It will fetch the result from previous result instead of run the job again. We solved this issue Map reduce by Distributed cache. But in spark it will be done very well.
+
+Advantages of Spark:-
+-----------------------
+1. Unified engine
+2. Processing Speed 
+3. No Intermediate data storing
+4. Support Various Datasets and Various formats
+5. Various cluster managers (CM's)
+
+Supported Language:-
+---------------------
+Java, Scala, Python, R
+
+Framework or Extension of Spark:-
+----------------------------------
+1. Spark-SQL
+2. Spark-Streaming
+3. Graph-X
+4. Mlib
+
+How to Interact with Spark:-
+---------------------------
+Scala   --> spark-shell
+Python  --> pyspark
+
+RDD:- (Resilient Distributed Dataset):-
+--------------------------------------
+1. RDD is a collection of records which are spilited as a partition across the cluster that can be operated in parallel.
+2. 
+
+R --> Resilient --> Fault tolerance of RDD, It can able to re-compute the partitions automatically.
+D --> Distributed --> Data are distributed in Multiple nodes.
+D --> Dataset --> Collection of records.
+
+Three ways to create RDD:-
+-------------------------
+1. External Source
+2. In-Memory (Parallelizing existing collection in driver program)
+3. Another RDD
+
+What is SparkContext:-
+---------------------
+SparkContext is used to connect Spark cluster with help of Resource Manager.
+
+External Source:-
+------------------
+import org.apache.spark.SparkConf
+import org.apache.spark.SparkContext._
+
+(Or)
+
+import org.apache.spark.sql.sparksession
+
+object Sample
+{
+	def main(args: Array[String])
+	{
+	
+		val conf=new SparkConf().setAppName("Test").setMaster("master");
+		val sc=new SparkContext(conf)
+		
+		(or)
+		
+		val spark= SparkSession.builder.appName("Sample").getOrCreate()
+		val data=spark.read.textfile("data.txt").cache()
+		val num1= data.filter(line => line.contains("a")).count()
+		val num1= data.filter(line => line.contains("b")).count()
+		println(num1)
+		println(num2)		
+	}
+}
+
+In-memory (Parallelize method):-
+--------------------------------
+--> parallelize method used to create parent RDD from in-memory data.
+
+val numbers = list(1,2,3,4)
+val numbers=sc.parallelize(numbers)
+
+From Another RDD:-
+-----------------
+val data=spark.read.textfile("data.txt")
+val SplitedData = data.flatMap(a => x.split(",")
+
+SplitedData RDD is created from data RDD.
+
+Note:- We can mention no of partitions need to be created for this RDD when creating parent RDD. 
+
+val data=spark.read.textfile("data.txt",4)
+
+Default is 2 for i3 Core processor System, It will be 4 for Above processor. (i5 and i7)
+
+Feature of RDD:-
+----------------
+1. Fault Tolerance:-
+	Spark will recompute the data automatically from failed RDDs. 
+	
+2. In-Memory Computation:-
+	Spark will Store the processed data in memory instead of disk.
+
+3. Lazy Evaluation:-
+	All the transformations are Lazy in Spark, Because it will not compute any result when transformation is called, instead of that It will remember that transformation is applied to dataset. Transformation are computed only when particular Action is called.
+	
+4. Partitioning:-
+	The RDD is splited into no of partitions across the cluster, It will be operated in  parallel. 
+	
+5. Persistence:-
+    We can also persist the RDD during our program execution.
+	We can persist RDD results in In-MMEORY or DISK using Different Storage levels.
+	
+what is Parent RDD?
+--------------------
+	RDD is created from source or in-memory is called as Parent RDD.
+
+what is Pair RDD?
+-----------------
+	Create key,value pair RDD from normal RDD that become a Pair RDD.
+	
+RDD Operations:-
+----------------
+RDD supports two type of operations,
+a) Transformations --> Creating new RDD from existing RDD
+b) Actions         --> Retrieve something from RDD 
+
+Transformations:-
+=================
+Transformation is a function which will take the RDD as a Input and produce one or more RDD as a output. 
+
+All the transformations are Lazy in Spark, Because it will not compute any result when transformation is called, instead of that It will remember that transformation is applied to dataset. Transformation are computed only when particular Action is called.
+
+Types of Transformations:-
+---------------------------
+1. Narrow Transformation:- (map(), flatMap(), filter(), mapPartition(), Sample(), Union)
+	One Child RDD partition is expecting the input from One Parent RDD partition is called as Narrow Transformation.
+	
+2. Wide Transformation:- (Shuffle Transformation) - check Shuffle Transformation
+	One Child RDD partition is expecting the input from Multiple Parent RDD partitions is called as Wide Transformation.
+
+Various Transformations:-
+==========================
+1. map() --> It iterates every line in RDD and create new RDD.
+			 one input and one output.
+			 Input and output data type may differ from each other.
+			 
+For example, in RDD {1, 2, 3, 4, 5} if we apply “rdd.map(x=>x+2)” we will get the result as (3, 4, 5, 6, 7).
+
+val conf = new SparkConf().setAppName("Test").setMaster("yarn")
+val sc = new SparkContext(sc)
+			
+or
+
+import org.apache.spark.SparkContext
+import org.apache.spark.SparkConf
+import org.apache.spark.sql.SparkSession
+object  mapTest{
+def main(args: Array[String]) = {
+	val spark = SparkSession.builder.appName("mapExample").master("local").getOrCreate()
+	val data = spark.read.textFile("data.txt").rdd
+	val mapFile = data.map(line => (line,line.length))
+	mapFile.foreach(println)
+	}
+}
+
+2. filter:-
+----------
+--> It iterates each element in the RDD and produces one or more many elements
+--> It filter the element based on logic written in the function.
+
+val data = spark.read.textFile("spark_test.txt").rdd
+val mapFile = data.flatMap(lines => lines.split(" ")).filter(value => value=="spark")
+println(mapFile.count())
+
+
+3. flapMap():-
+-------------
+--> It iterates each element in the RDD and produce multiple elements
+
+difference between map() and flatMap():
+--> Both map() and flapMap() iterates each element in the RDD, But the difference is map() returns one element and flapMap() returns many elements.
+
+val data = spark.read.textFile("spark_test.txt").rdd
+val flatmapFile = data.flatMap(lines => lines.split(" "))
+flatmapFile.foreach(println)
+
+4. mapPartitions(func):-
+-----------------------
+--> instead of iterates each element in RDD, it will be applied to each RDD level. It will be Iterated in entire RDD and produce the result.
+--> Ex:- Consider, one dataset is having 1000 rows and splited as 10 partitions. so each partition is having 100 rows.
+    When you apply map(func) to the RDD, It will be applied to each row in the RDD. so it will be called for 1000 times. Time consuming is more in this case for large dataset.
+	
+	If you apply mapPartitions(func), it will applied to RDD level. so it will be called for only 10 times. time consuming is low.
+	
+def map[A, B](rdd: RDD[A], fn: (A => B))(implicit a: Manifest[A], b: Manifest[B]): RDD[B] = {
+  rdd.map(fn)
+  }
+  
+def map[A, B](rdd: RDD[A], fn: (A => B))(implicit a: Manifest[A], b: Manifest[B]): RDD[B] = {
+  rdd.mapPartitions({ iter: Iterator[A] => for (i <- iter) yield fn(i) }, preservesPartitioning = true)
+}
+
+map() --> Record level
+mapPartitions() --> RDD level.
+
+mapPartitions transformation is faster than map since it calls your function once/partition, not once/element..
+
+5. mapPartitionWithIndex():-
+----------------------------
+--> Its like mapPartitions(func) and extra thing it will return the result with Index.
+So we can come to know this result belongs to this particular RDD. If any issue with data, we can easily find out the Error RDD.
+
+6. Union(dataset):-
+-------------------
+--> We can get the elements of both RDD's into new RDD. 
+--> Condition is Both RDD should be same type.
+
+For example, the elements of RDD1 are (Spark, Spark, Hadoop, Flink) and that of RDD2 are (Big data, Spark, Flink) 
+so the resultant rdd1.union(rdd2) will have elements (Spark, Spark, Spark, Hadoop, Flink, Flink, Big data).
+
+Ex:-
+
+val rdd1 = spark.sparkContext.parallelize(Seq((1,"jan",2016),(3,"nov",2014),(16,"feb",2014)))
+val rdd2 = spark.sparkContext.parallelize(Seq((5,"dec",2014),(17,"sep",2015)))
+val rdd3 = spark.sparkContext.parallelize(Seq((6,"dec",2011),(16,"may",2015)))
+val rddUnion = rdd1.union(rdd2).union(rdd3)
+rddUnion.foreach(Println)
+
+7. intersection(dataset):-
+--------------------------
+--> We can get only the common element of both RDD into new RDD.
+--> Condition is Both RDD should be same type.
+
+Consider an example, the elements of RDD1 are (Spark, Spark, Hadoop, Flink) and that of RDD2 are (Big data, Spark, Flink) 
+so the resultant rdd1.intersection(rdd2) will have elements (spark,Flink).
+
+Ex:-
+
+val rdd1 = spark.sparkContext.parallelize(Seq((1,"jan",2016),(3,"nov",2014, (16,"feb",2014)))
+val rdd2 = spark.sparkContext.parallelize(Seq((5,"dec",2014),(1,"jan",2016)))
+val comman = rdd1.intersection(rdd2)
+comman.foreach(Println)
+
+8. Distinct:-
+-------------
+--> It returns only the distinct elements of the source RDD into new RDD.
+--> It helps to remove the duplicates in the RDD.
+
+For example, if RDD has elements (Spark, Spark, Hadoop, Flink), then rdd.distinct() will give elements (Spark, Hadoop, Flink).
+
+val rdd1 = spark.sparkContext.parallelize(Seq((1,"jan",2016),(3,"nov",2014),(16,"feb",2014),(3,"nov",2014)))
+val result = rdd1.distinct()
+println(result.collect().mkString(", "))
+
+9. groupByKey([numTasks])-
+------------------------
+--> It works only on Pair RDD. It grouping the records based on the key. 
+--> The drawback is lot of unnecessary data is transfered over the network.
+
+Ex:-
+
+val data = spark.sparkContext.parallelize(Array(('k',5),('s',3),('s',4),('p',7),('p',5),('t',8),('k',6)),3)
+val group = data.groupByKey().collect()
+group.foreach(println)
+
+sparkContext.textFile("hdfs://")
+                    .flatMap(line => line.split(" ") )
+                    .map(word => (word,1))
+                    .groupByKey()
+                    .map((x,y) => (x,sum(y)) )
+					
+
+10. reduceByKey(func, [numTasks]):-
+----------------------------------
+--> grouping + Aggregation (Both groupByKey and reduceByKey gives the same result only. Performance wise there will be a difference.)
+
+--> It will be grouped and combined in the same machine before shuffled the data. It will shuffle less data when compared to groupByKey()
+
+--> It requires minimum two inputs.
+
+val words = Array("one","two","two","four","five","six","six","eight","nine","ten")
+val data = spark.sparkContext.parallelize(words).map(w => (w,1)).reduceByKey(_+_)
+data.foreach(println)
+
+sparkContext.textFile("hdfs://")
+                    .flatMap(line => line.split(" "))
+                    .map(word => (word,1))
+                    .reduceByKey((x,y)=> (x+y))
+					
+
+11. AggregatebyKey()
+---------------------
+--> It is used to Aggregate the values based on the each key. but you can provide initial values when performing aggregation.
+--> same as reduceByKey, which takes an initial value.
+--> 3 parameters as input i. initial value ii. Combiner logic iii. sequence op logic
+
+*Example:* `
+
+val keysWithValuesList = Array("foo=A", "foo=A", "foo=A", "foo=A", "foo=B", "bar=C", "bar=D", "bar=D")
+    val data = sc.parallelize(keysWithValuesList)
+    //Create key value pairs
+    val kv = data.map(_.split("=")).map(v => (v(0), v(1))).cache()
+    val initialCount = 0;
+    val addToCounts = (n: Int, v: String) => n + 1
+    val sumPartitionCounts = (p1: Int, p2: Int) => p1 + p2
+    val countByKey = kv.aggregateByKey(initialCount)(addToCounts, sumPartitionCounts)
+	
+ouput: Aggregate By Key sum Results bar -> 3 foo -> 5
+
+Difference between reduce by Key and Aggregate by Key:-
+==========================================================
+1. Same logic will be applied to Inside the partitions and Between the patitions. (Reduce by Key)
+val pairs = sc.parallelize(Array(("a", 3), ("a", 1), ("b", 7), ("a", 5)))
+
+val resReduce = pairs.reduceByKey(_ + _) //the same operation for everything
+resReduce.collect
+res3: Array[(String, Int)] = Array((b,7), (a,9))
+
+2. Can able to give different logics for Inside the partitions and Between the partitions.
+
+//0 is initial value, _+_ inside partition, _+_ between partitions
+val resAgg = pairs.aggregateByKey(0)(_+_,_+_)
+resAgg.collect
+res4: Array[(String, Int)] = Array((b,7), (a,9))
+
+
+12. CombineByKey()
+--------------------
+1. Values are merged into Single value at each partitions and then values from each partitions will be merged into Single value.
+2. Three parameters as input,
+	a) Combiner functions --> It will take the Initial value and perform the logics with each value in the partitions. 
+	b) Merging functions --> Merging the values inside the each partitions.
+	c) Combiner functions --> It will combine the values from each partitions and give the single value.
+
+//type alias for tuples, increases readablity
+type ScoreCollector = (Int, Double)
+type PersonScores = (String, (Int, Double))
+
+val initialScores = Array(("Fred", 88.0), ("Fred", 95.0), ("Fred", 91.0), ("Wilma", 93.0), ("Wilma", 95.0), ("Wilma", 98.0))
+
+val wilmaAndFredScores = sc.parallelize(initialScores).cache()
+
+val createScoreCombiner = (score: Double) => (1, score)
+
+val scoreCombiner = (collector: ScoreCollector, score: Double) => {
+         val (numberScores, totalScore) = collector
+        (numberScores + 1, totalScore + score)
+      }
+
+val scoreMerger = (collector1: ScoreCollector, collector2: ScoreCollector) => {
+      val (numScores1, totalScore1) = collector1
+      val (numScores2, totalScore2) = collector2
+      (numScores1 + numScores2, totalScore1 + totalScore2)
+    }
+val scores = wilmaAndFredScores.combineByKey(createScoreCombiner, scoreCombiner, scoreMerger)
+
+val averagingFunction = (personScore: PersonScores) => {
+       val (name, (numberScores, totalScore)) = personScore
+       (name, totalScore / numberScores)
+    }
+
+val averageScores = scores.collectAsMap().map(averagingFunction)
+
+println("Average Scores using CombingByKey")
+    averageScores.foreach((ps) => {
+      val(name,average) = ps
+       println(name+ "'s average score : " + average)
+    })
+
+
+13. foldByKey()
+--> Similiar to reduce by key, extra thing is, it is having initial value.
+
+14. sortByKey()
+----------------
+--> This transformation is applied on Pair RDD. the data is sorted based on the key into another RDD.
+
+Ex:-
+
+ val data = spark.sparkContext.parallelize(Seq(("maths",52), ("english",75), ("science",82), ("computer",65), ("maths",85)))
+val sorted = data.sortByKey()
+sorted.foreach(println)
+
+15. Join():-
+==========
+--> The join() transformation will join two different RDDs on the basis of Key.
+--> Common elements from both RDDs will be coming as output. Just like INNER join from SQL.
+
+val data = spark.sparkContext.parallelize(Array(('A',1),('b',2),('c',3)))
+val data2 =spark.sparkContext.parallelize(Array(('A',4),('A',6),('b',7),('c',3),('c',8)))
+val result = data.join(data2)
+println(result.collect().mkString(","))
+
+Array(('A',(1,4,6)),('b',(2,7)),
+
+16. Coalesce():- 
+--------------
+--> It is used to reduce the no. of partitions. 
+--> To Avoid the full shuffling, we use coalesce(), After used coalesce, Less data will be shuffled.
+
+val rdd1 = spark.sparkContext.parallelize(Array("jan","feb","mar","april","may","jun"),3)
+val result = rdd1.coalesce(2)
+result.foreach(println)
+
+17. Re-Partitions():-
+---------------------
+--> Reshuffle the entire data in the RDD and create a new RDD. No of partitions may be less or more than previous RDD.
+--> Full shuffling will be happening over the network.
+
+18. Co-Group:-
+-------------
+--> It will give all the elements of both RDDs like Full outer join.
+
+val rdd1 = sc.makeRDD(Array(("A","1"),("B","2"),("C","3")),2)
+val rdd2 = sc.makeRDD(Array(("A","a"),("C","c"),("D","d")),2)
+
+scala> var rdd3 = rdd1.cogroup(rdd2).collect
+res0: Array[(String, (Iterable[String], Iterable[String]))] = Array(
+(B,(CompactBuffer(2),CompactBuffer())), 
+(D,(CompactBuffer(),CompactBuffer(d))), 
+(A,(CompactBuffer(1),CompactBuffer(a))), 
+(C,(CompactBuffer(3),CompactBuffer(c)))
+)
+
+Actions:-
+=========
+1. Retrieve Something from RDD is called as Actions.
+
+1. count:- --> 	Returns the No of elements in the RDD.
+
+val data = spark.read.textFile("spark_test.txt").rdd
+val mapFile = data.flatMap(lines => lines.split(" ")).filter(value => value=="spark")
+println(mapFile.count())
+
+2. collect():- --> Returns the elements in the RDD
+
+val data = spark.sparkContext.parallelize(Array(('A',1),('b',2),('c',3)))
+val data2 =spark.sparkContext.parallelize(Array(('A',4),('A',6),('b',7),('c',3),('c',8)))
+val result = data.join(data2)
+println(result.collect().mkString(","))
+
+3. Take(n):- --> Returns n number of elements in the RDD.
+
+val data = spark.sparkContext.parallelize(Array(('k',5),('s',3),('s',4),('p',7),('p',5),('t',8),('k',6)),3)
+val group = data.groupByKey().collect()
+val twoRec = result.take(2)
+twoRec.foreach(println)
+
+4. top(n):-  --> Returns n number of elements with default ordering
+
+val data = spark.read.textFile("spark_test.txt").rdd
+val mapFile = data.map(line => (line,line.length))
+val res = mapFile.top(3)
+res.foreach(println)
+
+5. CountByValue():- --> It returns, How many times each element occur in the RDD.
+
+For example, RDD has values {1, 2, 2, 3, 4, 5, 5, 6} in this RDD “rdd.countByValue()”  will give the result {(1,1), (2,2), (3,1), (4,1), (5,2), (6,1)}
+
+val data = spark.read.textFile("spark_test.txt").rdd
+val result= data.map(line => (line,line.length)).countByValue()
+result.foreach(println)
+
+6. reduce() --> It is used to Aggregate the elements of the Source RDD.
+--> It expects two parameters.
+
+val rdd1 = spark.sparkContext.parallelize(List(20,32,45,62,8,5))
+val sum = rdd1.reduce(_+_)
+println(sum)
+
+7. fold():- 
+--> fold() action is like reduce() actions. but it takes the Zero value as input.
+
+Difference between fold() and reduce() --> reduce() will throw error if the source is empty,
+But fold() will not throw any error due to its having an initial value.
+
+For example, rdd.fold(0)((x, y) => x + y).
+
+val rdd1 = spark.sparkContext.parallelize(List(("maths", 80),("science", 90)))
+val additionalMarks = ("extra", 4)
+val sum = rdd1.fold(additionalMarks){ (acc, marks) => val add = acc._2 + marks._2 ("total", add)
+}
+println(sum)
+
+8. aggregate():- 
+--> 
+
+
+Shared Variables:-
+==================
+1. The value in the variable will be shared to all the task.
+
+It can be used in parallel operations, It takes the copy of each variable used in the function to each task. Sometimes the variable needs to be shared across the task or between the tasks. So Spark supports two type of Shared Variables, 
+
+a) Broadcast Variables --> It used to copy the value in memory on all nodes
+b) Accumulators --> ? (That are only added to such as Counters and Sums)
+
+Why we go for Broadcast Variables?  (Closure Issue)
+-----------------------------------
+If you have huge dataSet, this dataset will be shipped to each spark node with closure, thats need to be shared across all the tasks, If you have 100 tasks are running in 10 machines, 100 times that dataset need to be accessed and get processed. 
+To avoid the closure issue, Broadcast Variables comes into picture. 
+
+What is Broadcast Variables?
+-----------------------------
+The value will be copied to memory of all nodes. Task will access the value from the memory of particular node.
+
+Example:-
+----------
+Using Closures:-
+----------------
+val input = sc.parallelize(list(1,2,3,4))
+
+val localVal  = 2
+
+val data = input.map(x => x + localVal)
+
+data.foreach(println)
+
+Using Broadcast Variables:-
+---------------------------
+val input = sc.parallelize(list(1,2,3,4)
+
+val broadcastVar = sc.broadcast(2)
+
+val added = input.map(x => x + broadcastVar.value)
+
+added.foreach(println)
+
+What is Accumulators?
+=====================
+Accumulators are used for aggregating information across the executors.
+
+val input = sc.parallelize(List(1,2,3,4,5,6,7,8,9,10))
+
+val myAccum = sc.accumulator(0,"Calculating no of elements")
+
+println("No of partitions are " + input.partitions.size)
+
+input.foreach(x => myAccum += 1)
+
+println("No of elements are " + myAccum.value)
+
+Shuffle Operations:-
+=====================
+1. Shuffling is a process of distributing the data across the partitions.
+2. Shuffling is a process of data transfer between stages 
+3. By default, Shuffling will not change the no of partitions, but it change only its content.
+4. Shuffling is a complex and costly operation.
+
+Example:-
+----------
+--> Avoid groupByKey, It shuffles all the data to reducer and entire aggregation will happen in Reducer, Instead we can use ReduceByKey or combineByKey. It shuffles only results of sub-Aggregation in each partitions of the data. 
+
+Background operations3:-
+-----------------------
+For example, when you perform "reduceByKey" operation, 
+
+All the values related to the same key should be collected from across the partitions. But those all values are not present in a single partition / Same machine.
+
+So that Spark need to find all values related to key from all partitions and bring those all values across the partitions to compute the final result for each key is called as Shuffle.
+
+Operations which cause Shuffle are,
+a) Repartitions operations --> Re-Partitions and Coalesce 
+b) byKey operations        --> groupByKey and reduceByKey
+c) Join operations         --> join and cogroup
+
+Performance Impact:-
+---------------------
+1. Shuffle is very expensive operations since it involves disk IO, network I/O and data Serializations.
+2. For Shuffling, Spark generates the set of tasks, map tasks to collect the data, Reduce tasks to aggregate it. Internally, mapper output will be kept in memory then written to single file. Then Reduce task will read those data.
+
+RDD Persistence:- (Caching and Persistence):-
+==============================================
+1. The RDD can be persisted using persist or cache method. First time, It is computed in an action and store it in memory, next time, It will take it from memory. 
+2. In addition to that, each persisted RDD can be stored in a different storage level, It can be Memory, disk. These storage level can be set by passing storage level object to persist() method. 
+3. Cache() method will be used as Default, It will store the RDD in memory only (StorageLevel.MEMORY_ONLY) and it store deserialized objects in memory.
+4. Spark will persist the RDD automatically for some shuffle operations (Ex: reduceByKey) even though user does not invoke the persist method. This is avoid the Recomputing the data again.
+5. It is an optimization technique which saves result of RDD. We can use this when ever its required. It will reduce the Computation.
+It will be useful for Interactive and Iterative application.
+
+These Intermediate results are stored in below levels,
+
+1. MEMORY_ONLY - RDD is stored in a IN-MEMEORY, It does not use the disk. 
+				 RDD is stored as a De-Serialized object in the JVM. If the RDD size is greater than Memory size, It will not cache some partition and recompute them next time when ever its required.
+				 Space used for Storage is very high
+				 CPU Computation is LOW.
+				 
+2. MEMORY_AND_DISK - RDD is stored as a De-Serialized object in the JVM, 
+					 when the size of RDD is greater than Memory Size, it will store the excess partition on the disk and retrieve them when ever its required. 
+					 It will make use of both IN-MEMORY AND DISK.
+					 Space used for Storage is very high
+					 CPU Computation is Medium.
+
+3. MEMORY_ONLY_SER - RDD is stored as a Serialized object in the JVM, 
+                     It is a more space Efficient compared to De-Serialized objects.
+					 But CPU Computation is very high.
+					 Space used for storage is LOW.
+					 It will use only IN-MEMEORY and does not make used of DISK.
+
+4. MEMORY_AND_DISK_SER - RDD is stored as a Serialized object in the JVM, 
+						 when the size of RDD is greater than Memory Size, it will drop the Partition, rather than Recomputing from each time if needed.
+						 Space used for storage is low. CPU Computation is high
+						 It makes use of both MEMORY AND DISK
+						 
+						 
+5. DISK_ONLY - RDD is stored only in a disk. 
+               Space used for storage is low. CPU Computation is high
+			   It makes use of only disk.
+			   
+How to Un-Persist the RDD?
+--------------------------
+Spark monitors the cache of each node automatically and drop the old data partition in Least recently used manner. 
+We can also remove the cache manually by RDD.unpersist() method.
+
+Benefits of RDD Persistence in Spark:-
+--------------------------------------
+1. Time efficient
+2. Cost Efficient
+3. Less Execution Time
+
+Difference between Cache() and Persistence():-
+------------------------------------------------
+1. When we use cache() method, Default storage level is in MEMORY-ONLY mode.
+2. When we use persist() method, we can use other Storage levels.
+
+Cluster Manager:-
+=================
+Cluster Managers are used to manage the resources, Resources are nothing but memory and CPU.
+
+Spark supports three Cluster Managers,
+1. Standalone
+2. YARN
+3. Mesas
+
+Standalone Cluster Manager:
+----------------------------
+1. Standalone CM is supporting Master slave Architecture, Which have two main Deamons called as
+	a) Master 
+	b) Worker.
+
+Master:
+-------
+Master is deamon process which is running in Master machine. Master deamon will take care of Global resource handling, It will receive the heart beat from Workers. There is a only one Master deamon will be available for the cluster.
+
+Worker:
+-------
+Worker is a deamon which is running in Slave machines. Worker is handling local resource Management. Sending heart beat to Master. 
+
+Executor:
+----------
+Executor is a process, which is created in Worker machines. By default Only one executor will be created in worker machine for one application. Based on resource, Executor will launch the tasks.
+
+How to Start Master-Worker Deamon in Stand Alone Cluster:-
+----------------------------------------------------------
+Two ways are available:
+
+1. Which machine you want to act as a master machine, go to conf folder, execute sbin/Start-all.sh command, It will start Master deamon in that machine and what are the machines configured in Slaves files, Worker deamon will be automatically started.
+
+2.  Which machine you want to act as a master machine, go to conf folder, execute sbin/start-master.sh command, It will start master deamon in that machine. After that You need to login in all other slave machines and execute sbin/start-worker.sh --master spark://localhost:7077  then worker deamon will be started.
+
+RPC port no for SA - 7077
+
+Web UI Port no: 8080
+
+Spark Job Execution in Standalone Cluster:
+-------------------------------------------
+1. Spark job is submitted to Edge node, Edge node will contact Zookeeper to check which is a Active Master and sending a response as Master details.
+2.  Edge node will submit the Spark-Submit.sh command along with the parameters to Master. Driver program will be executed in Master machine, Spark Core converts Driver program to Lineage graph, Lineage graph will be converted to Stage graph, Stage graph will be converted to Task graph. 
+3. After tasks are created, Spark core will be communicating with Master for resources. Master will ask workers to start one sub process called as Executor, Executor will execute the task based on No of CPU.
+4. Once Task is completed, Executor will assign the next task till all task to be completed for stage, Then stage task to be completed. 
+5. Once Stage task is completed, Entire job will be getting completed.
+
+How to Execute Spark application in Standalone CM:-
+----------------------------------------------------
+bin/spark-submit.sh --master spark://bigdata:7077 
+		 --executor-m emory 150m 
+		 --executor-cores 1  
+		 --class datadotz.spark.training.PatientDrugCount 		/home/datadotz/Angesh/DataDotz_II/Spark/Spark/DataDotz-Training-Spark/target/spark-job-driver-0.0.1-SNAPSHOT-jar-with-dependencies.jar 		file:///home/datadotz/datagen_10.txt 		file:///home/datadotz/Angesh/Spark_Output/28-08-2016/2
+
+		 
+Spark Execution in YARN Cluster:-
+==================================
+1. Spark job is submitted to Resource manager, First Resource manager will check the security things, whether request is coming from authorized client r not, Then Resource manager negotiates resource from scheduler and  Ask Node manager to create a process called as Application Master,
+2.  Resource manager will execute driver program in Application Master. Application master is sending a heartbeat to Application manger.
+3. Application Master will negotiates resource from Scheduler and Scheduler will check Min max configurations, Resource manager contact node manager to start process called as Executor. 
+4. Executor will execute the task in Node manager. One executor will be created for one job in one node manager. 
+5. Once Executor job is completed, Next job is assigned to executor by Application Master. Executor sending heart beat signal to Application Master.
+6. All executor job is completed, Next stage executor task are launched. Then all stage task are completed, entire job is completed.
+
+Note:
+1. For every 10 Mints, Node manager sending heart beat signal to Resource manager. 
+2. If any task is failed in node manager, Application Master will contact Resource manager and create another container in another node manager. 3 times Application master launches the container, If 3 time task is failed, then Entire job will be failed.
+3. If the Container is created, for 15 mints if any task is not allocated, then Node manager will revoke the container, Then Application Master will create container again. 
+
+How to Execute Spark application in YARN:-
+-------------------------------------------
+bin/spark-submit --master yarn-cluster 
+			--num-executors 1
+			 --driver-memory 200m 
+			--executor-memory 150m 
+			--executor-cores 1 
+			--class datadotz.spark.training.PatientDrugCount /home/datadotz/Angesh/DataDotz_II/Spark/Spark/DataDotz-Training-Spark/target/spark-job-driver-0.0.1-SNAPSHOT-jar-with-dependencies.jar
+			 /data10 
+			/SparkOutput/Yarn
+
+Configuration required for Spark-env.sh:-
+----------------------------------------
+export HADOOP_CONF_DIR=/home/datadotz/hadoop-2.6.0/etc/hadoop
+export SPARK_WORKER_MEMORY=512m
+export SPARK_WORKER_CORES=2
+export SPARK_WORKER_INSTANCES=1
+export SPARK_EXECUTOR_MEMORY=200m
+export SPARK_EXECUTOR_CORES=1
+export JAVA_HOME=/home/datadotz/jdk1.7.0_45
+export SPARK_LOCAL_DIRS=/home/datadotz/spark-1.5.1-bin-hadoop2.6/data_intermediate

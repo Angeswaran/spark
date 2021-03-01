@@ -1,0 +1,59 @@
+SERDE:
+=====
+Serde is nothing but data Serialization and De-serialization. For the purpose of IO, we go for SERDE.
+
+Each File Format is having own native SERDE.
+
+When Read Operations,
+
+HDFS files --> InputFileFormat --> <Key,Value> --> Deserializer --> RowObject
+
+When Write operation happens,
+
+RowObject --> Serializer --> <Key,Value> --> OutputFileFormat --> HDFS Files
+
+Types of SERDE:-
+----------------
+1. Build-In SERDE:-
+
+2. Custom SERDE:-
+
+----------------------------------------------------------------------------------------------
+
+when you are reading or writting the data from HDFS in Hive, you should use SERDE.
+
+When you are storing the data in HDFS, It is storing the data based on mentioned file format. 
+
+Read Operation: (De-serialiasation)
+===============
+When you are reading the data, Based on file format mentioned in Table definition, Corressponding record reader will read the record, That record is a serialiased record, This serialiased record goes to Serde.Deserialise() method, with help of Object Inspector class, Object Inspector class will deserialise the  entire row which are coming or each column in the row and give it to end user.
+
+Write Operation: (Serialiasation)
+=================
+We need to write the file to hive table, Based on file format, corresponding record reader will read the record and converts into Java object and Java object is giving to Serde.serialiase() method, Object Inspector class will serialiase the each and every fields in the row and store it in Hive table.
+
+Serde Life Cycle:
+================
+1. Initialise method - Called Once. --> Find out Table properties, Column type, column name
+2. De-serialiaze method
+3. Serialiaze method 
+
+Public Class CSVSerde implements SerDe
+{
+	Public void initialize(Configuration conf, properties Tbl) throws SerDe Exception
+	{
+	
+	}
+	
+	Public Writable serialize(Object obj, ObjectInspector objectInspector) throws SerDe Exception
+	{
+	
+	}
+	
+	Public Object deserialize(Writable blop) throws SerDe Exception
+	{
+	
+	}
+	
+
+}

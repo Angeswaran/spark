@@ -1,0 +1,25 @@
+Spark Core:-
+============
+1. Initializing Spark
+2. RDD Operations
+	a) Transformation	
+	b) Actions
+	c) Shuffle operations
+3. RDD Persistence 
+	a) Cache and Persist
+	b) Storage level and Removing data
+4. Shared variables
+	a) Broadcast Variables
+	b) Accumulators
+
+Spark-SQL:-
+============
+1. Spark Session creation
+2. Creating Dataframes
+3. Running SQL Queries Programmatically
+4. Global Temporary View
+5. Creating Partition Table from Dataframe
+6. Creating Bucket/Sorted Bucket table from dataframe
+7. Creating Partition + Bucket table from dataframe
+8. 
+	

@@ -1,0 +1,24 @@
+1. Braintree is a Payment Gateway. Now a days, All the transaction will be happened by payment gateway. Once the transactions is completed Successfully, the payment will be settled to client after three days. (
+First day --> Transactions happened, Braintree will send all the transactions to corresponding bank at end of the day.
+Second day --> Bank will verify the Transactions which we received from Merchant bank and send the payment to Payment gateway.
+Thrid day --> Payment gayeway will send payment to client bank)
+But few of the customers are not waiting for this three days. they will ask money on the day itself.
+
+Here Braintree provides two way of funding.
+a) Bank funded --> Normal three days of settlement --> Charges are normal with tax.
+b) Braintree funded. --> Braintree settle the payment on First day itself and Braintree will collect the payment from Merchant bank after two days. Charges will be more)
+
+In this project, We were calculating the Estimates and actual for each transaction, Comparing Estimates and actuals to find out differece.
+It will be used for predict the estimates for future transactions to know the stand point.
+
+==================
+Project flow:-
+1. For each transaction, the data will be loaded to Postgresql. Informatica jobs are scheduled to load the data from Postgress to S3 with encrypted format. 
+2. Wrapper script is designed to copy the data from S3 to Edge node, here the data is decrypted and stored it in HDFS. (Spark Layer - I).
+   Here totally 357 tables were there, These tables are created by Spark-SQL and those tables are partitioned by hour level and stored as Parquet. (Direct dump)
+   Per day, 24 partition will be created for each table and Once 24 partitions are created, The Touch file (.done) created in edge node for the corresponding table.
+3. Another wrapper script was designed to check that particular touch is there or not. If the touch file is there, then It will start load the data from spark layer 1 and Spark layer 2.
+   Here totally 357 tables were there and those tables are partitioned by day level and stored as Parquet. (History data) Consided as Staging layer.
+4. Once these data is loaded, Business logics are applied in Work layer, For that it will fetch the data from Stagging layer. After logics are executed, the resultant data will be loaded Target layer tables. (Full-Refresh)
+5. After that One to one view were created in Consumption layer on top of the Target layer tables.
+6. Rec Reporting Team will use this views to Generate reports like daily, Weekly, Monthly, Quartly, Yearly report like that.

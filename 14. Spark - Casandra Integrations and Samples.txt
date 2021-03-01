@@ -1,0 +1,50 @@
+Cassandra Tables:
+=================
+	Spark SQL supports reading and Writting the data in Cassandra 
+
+Configuration:
+==============
+1. Copy the Cassandra.yaml file to Spark conf folder
+2. Add the Cassandra connector jar path to spark-env.sh file by,
+ export SPARK_CLASSPATH=/home/datadotz/Cassandra-connector.jar to Spark-env.sh file.
+
+Simple Program:
+==============
+object test
+{
+   
+   def main(args: Array[String])
+   {
+	val conf = new SparkConf().SetAppName("Appilication1")
+	val sc = new SparkContext(conf)
+	val sqlContext = new SQLContext(sc)
+	
+	case class Employee(empid:Int,Ename:String,deptID:Int)
+
+	case class Department(deptID:int,deptname:String)
+
+	case class EmpDept(empid:int,Ename:String,deptName:String)
+
+	Val employee = sc.CassandraTable[Employee]("dbname","TableName").cache
+
+	Val department	sc.CassandraTable[Department]("dbname","TableName").cache
+
+	Val empl_bydepartID = employee.keyBy(f => f.deptID)
+	Val dep_depID = department.keyBy(f => f.deptID)
+	
+	//Join the tables by DeptID
+	Val JoinedDepartment = empl_bydepartID.join(dep_depID).cache
+	
+	//Create RDD with new result with mapping columns
+	Val newRDD = JoinedDepartment.map(f => EmpDept(f.))
+
+	//Get the Top 10 results
+	val top10 = newRDD.collect.toList.sortBy(_.DepID).reverse.take(10)
+
+	Val newRdd1 = sc.parallelize(top10)
+
+	//Save to Cassandra
+	newRdd1.saveToCassandra("dbname","Tablename",SomeColumns("column1","Column2"))	
+	
+    }
+}

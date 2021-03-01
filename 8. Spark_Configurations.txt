@@ -1,0 +1,88 @@
+Common:-
+=========
+spark.executor.instances --> Same as num-executors
+spark.yarn.executor.memoryOverhead --> Amount of additional memory to be allocated per executor process in cluster mode, (executorMemory * 0.10)
+spark.executor.memory --> Amount of memory to use per executor process
+spark.yarn.driver.memoryOverhead --> set the memory utilized by every Spark driver process in cluster mode (driverMemory * 0.10)
+spark.driver.memory --> Amount of memory to use for the driver process               
+spark.executor.cores --> The number of cores to use on each executor.
+spark.driver.cores --> Number of cores to use for the driver process, only in cluster mode.
+spark.default.parallelism --> Default number of partitions in RDDs returned by transformations like join, reduceByKey, and parallelize when not set by user.
+
+Spark-Submit Configurations:-
+=============================
+--conf spark.serializer=org.apache.spark.serializer.KyroSerializer --> Setting the kyro serializer
+spark.dynamicAllocation.enabled=true --> Whether to use dynamic resource allocation
+spark.dynamicAllocation.initialExecutors=100 --> Initial number of executors to run if dynamic allocation is enabled.
+spark.dynamicAllocation.minExecutors=100 --> Lower bound for the number of executors if dynamic allocation is enabled.
+spark.dynamicAllocation.maxExecutors=500 --> Upper bound for the number of executors if dynamic allocation is enabled.
+spark.sql.cbo.enabled=true --> Cost based optimization is optimization technique in Spark SQL that helps to determine most efficient query execution plan for given query
+spark.scaas.log.level=job
+spark.yarn.maxAppAttempts=2 --> spark will give attempts to run the job by default
+spark.executor.heartbeatInterval=30s --> Application Master heartbeats into Resource Manager.
+spark.dynamicAllocation.executorIdleTimeout=120s --> If dynamic allocation is enabled and an executor has been idle for more than this duration, the executor will be removed.
+spark.speculation=true 	--> speculative execution of tasks.
+spark.speculation.interval=100ms --> The time interval to use before checking for speculative tasks.
+spark.speculation.multipliers=1.5 --> How many times slower a task is than the median to be for speculation.
+spark.speculation.quantile=0.75 --> The percentage of tasks that has not finished yet at which to start speculation.
+spark.sql.broadcastTimeout=48000 --> Timeout in seconds for the broadcast wait time in broadcast joins
+spark.yarn.max.executor.failures=100 --> The maximum number of executor failures before failing the application
+spark.yarn.am.memoryOverhead=5120 --> Same as spark.driver.memoryOverhead, but for the YARN Application Master in client mode.
+spart.driver.maxResultSize=10g
+spark.memory.fraction=0.6 --> Fraction of (heap space - 300MB) used for execution and storage.
+spark.memory.storageFraction=0.5
+spark.default.parellelism=200 --> By default, It will take All cores of All the nodes in the cluster. (only works for RDD)
+spark.sql.shufffle.partition=2500 --> Configures the number of partitions to use when shuffling data for joins or aggregations. (When you dealing with less amount of data, you should typically reduce the shuffle partitions otherwise you will end up with many partitioned files with less number of records in each partition.) (Only works for Dataframe)
+spark.netweork.timeout=2400s
+spark.shuffle.io.retryWait=600s
+spark.rpc.askTimeout=2400s
+
+Declaring Spark Properties:-
+==========================
+
+spark = SparkSession.builder.enableHiveSupport().getorCreate()
+spark.conf.set("hive.exec.dynamic.partition","true")
+spark.conf.set("hive.exec.dynamci.partition.mode","nonstrict")
+spark.conf.set("spark.shuffle.compress","true")
+spark.conf.set("spark.debug.maxToStringFields",'2000')
+spark.conf.set("optimize.sort.dynamic.partitioning","true")
+spark.conf.set("spark.sql.hive.convertmetastoreParquest","true")
+spark.conf.set("spark.debug.maxToStringFields",'100')
+spark.conf.set("spark.sql.parquet.writeLegacyFormat","true")
+spark.conf.set("hive.enforce.bucketing',"true")
+spark.conf.set("hive.enforce.sorting","true")
+
+spark.conf.set("spark.sql.cbo.enabled","true")
+spark.conf.set("spark.scass.log.level","job")
+spark.conf.set("spark.yarn.maxAttempts",'2")
+spark.conf.set("spark.executor.heartbeatInterval","30s")
+spark.conf.set("spark.dynamicAllocation.executorIdleTimeout","180")
+spark.conf.set("spark.dynamicAllocation.initialExecutors","50")
+spark.conf.set("spark.dynamicAllocation.minExecutors","50")
+spark.conf.set("spark.dynamicAllocation.maxExecutors","300")
+spark.conf.set("spark.speculation","true")
+spark.conf.set("spark.speculation.interval","100ms")
+spark.conf.set("spark.speculation.multiplier","1.5")
+spark.conf.set("spark.speculation.quantile","0.75")
+spark.conf.set("spark.sql.broadcastTimeout","48000")
+spark.conf.set("spark.yarn.max.executor.failures","100")
+spark.conf.set("spark.yarn.am.memoryOverhead","5120")
+cpark.conf.set("spark.driver.maxResultSize","10")
+spark.conf.set("spark.memory.fraction","0.6")
+spark.conf.set("spark.memory.storageFraction","0.5")
+spark.conf.set("spark.default.parellelism",'2000")
+spark.conf.set("spark.sql.shuffle.partitions","2000")
+spark.conf.set("spark.netwok.timeout""2400s")
+spark.conf.set("spark.shuffle.io.retryWait","600s")
+spark.conf.set("spark.rpc.askTimeout","5400s")
+
+
+Reserved Memory --> 300 MB --> Not used by Spark
+User Memory --> 25% of executor memory --> Data structure data will be stored in User memory
+remaining 75% will be Spark memory fraction (Spark.memory.fraction) --> Storage Memory + Execution Memory
+Storage memory --> It will be store cached/Persisted data, in RDD/Dataframe
+Execution memory --> Spark generated data (Intermediate data) during transformations/actions
+
+
+
+

@@ -1,0 +1,146 @@
+--------
+Basic:-
+--------
+import org.apache.spark.sparkconf
+import org.apache.spark.sparkcontext
+import org.apache.spark.sql.SQLContext
+import org.apache.spark.sql.hive.HiveContext
+
+object DataFraming {
+
+  case class Patient(id: Int, name: String, dName: String, gender: String, amount: Int)
+
+  def main(arg: Array[String]) {
+    if (arg.length < 2) {
+      System.err.println("Usage: DataFraming <path-to-files> <output-path>")
+      System.exit(1)
+    }
+
+    val conf = new SparkConf().setAppName("Spark Dataframe")
+
+    val sc = new SparkContext(conf)
+
+    val sqlContext = new SQLContext(sc)
+
+    import sqlContext.implicits._
+
+    val patient = sc.textFile("file:///home/datadotz/datagen_10.txt")
+    val columns = patient.map(_.split(","))
+    val patientSchemaRDD = columns.map(p => Patient(p(0).toInt, p(1), p(2), p(3), p(4).toInt))
+    val patientDataFrame = patientSchemaRDD.toDF()
+    
+
+    patientDataFrame.registerTempTable("patient")
+    //val count = sqlContext.sql("select * from patient")
+    val count = patientDataFrame.groupBy("dName").count()
+    count.collect().foreach { println }
+    count.save("/Patient")
+	
+=========================================================================
+Actual Data:-
+----------
+1,Kumar,90
+2,Raju,85
+3,Hari,65
+
+case class Student (id: Int, name:String, marks: Int)
+
+
+val conf = new SparkConf().setAppName("Test").setMaster("yarn-client")
+val sc = new SparkContext(conf)
+val sqlcontext = new SparkContext(sc)
+
+val rawData = sc.textFile("/data.txt")
+
+val StudentRDD = rawData.map{ line => 
+
+	val columns = rawData.split(",")
+
+	Student(columns(0).toInt,columns(1),columns(2).toInt)
+}
+
+val StudentDF = StudentRDD.toDF()
+
+======================================================================
+val spark=SparkSession.builder.appName("Example").master("yarn").getOrCreate()
+
+val data=spark.read.textfile("data")
+
+data.show()
+data.select("name").show()
+data.filter("age" > 21).show()
+data.groupBy("age").count().show()
+
+data.createOrReplaceTempView("people")
+
+val sqlDF = spark.sql("select count(*) from people")
+sqlDF.show()
+
+--------
+Read:-
+--------
+val data	 		=	spark.read.textfile("data")
+val CSVdata	 		=	spark.read.csv("/data")
+val peopleDF 		=  	spark.read.json("examples/src/main/resources/people.json")
+val parquetFileDF 	= 	spark.read.parquet("people.parquet")
+---------
+Write:-
+---------
+peopleDF.write.parquet("people.parquet")
+
+---------------------------------
+How to access hive Tables:-
+--------------------------
+import org.apache.spark.sparkconf
+import org.apache.spark.sparkcontext
+import org.apache.spark.sql.hive.HiveContext
+import org.apache.spark.sql.sparksession
+
+def main(args:Array[String])
+{
+    val conf = new SparkConf().setAppName("Test").setMaster("yarn-client")
+    val sc = new SparkContext(conf)
+    val hiveContext = new HiveContext(sc)
+    val sqlcontext = new SqlContext(sc)
+    
+    val dataDF = hiveContext.sql("Select * from emp1 a join emp2 b on a.id = b.id")
+    
+    dataDF.registerTempTable("EmpFinal")
+    
+    val data1= sqlcontext.sql("select * from EmpFinal")
+}
+---------------------------------
+Loading text file to DataFrame:-
+---------------------------------
+
+val conf = new SparkConf().setAppName("Test").setMaster("yarn-client")
+val sc = new SparkContext(conf)
+val data = sc.read.textfile("data/data.txt")
+
+
+----------------------------------
+Loading csv file into dataframe:-
+----------------------------------
+val conf = new SparkConf().setAppName("Test").setMaster("yarn-client")
+val sc = new SparkContext(conf)
+val sqlcontext = new SparkContext(sc)
+
+-- Reading csv file-----
+val data = sqlcontext.read.format("csv").option("header","true").load("data.csv")
+
+--Writing the csv file----------
+df.select("id","name").write.format("csv").save("your_testfile.csv")
+
+Spark Version 2.0:-
+-----------------
+val data = spark.read.format("csv").option("header","true").load("data.csv")
+
+-----------------------------
+Write Data to Hive Table:-
+-----------------------------
+val patient = sc.textFile("file:///home/siva/datagen_10.txt")
+val columns = patient.map(_.split(","))
+val patientSchemaRDD = columns.map(p => Patient(p(0).toInt, p(1), p(2), p(3), p(4).toInt))
+val patientDataFrame = patientSchemaRDD.toDF()
+patientDataFrame.write.mode(SaveMode.Append).saveAsTable("myHiveTable")
+

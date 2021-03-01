@@ -1,0 +1,43 @@
+Hive Compression Codecs:-
+=========================
+Compression is used for reduce the Amount of memory utilization in the cluster. 
+
+Compression will be used to compress the data and stored in HDFS, So that Mapreduce will read the data faster. because Size of the file was reduced.
+
+Below Compression have been used in Hive,
+
+1. gzip   
+2. bzip2
+3. lzo
+4. snappy  
+
+File Extension Of the Compression Techniques:-
+===========================================
+1. GZip --> .gz
+2. BZip2 --> .bz2
+3. LZO --> .lzo
+4. Snappy --> .snappy
+
+Compression Speed:-
+====================
+1. Gzip --> Medium
+2. BZip2 --> Slow
+3. LZO --> Fast
+4. Snappy --> Fast
+
+Compression Ratio:- (100GB to 65GB)
+====================
+1. Gzip --> Medium
+2. BZip2 --> Fast
+3. LZO --> Medium
+4. Snappy --> Medium
+
+Compressed data Splittable:-
+==============================
+1. Gzip --> Splittable --> No
+2. BZip2 --> Splittable --> Yes
+3. LZO --> Splittable --> Yes
+4. Snappy --> Splittable --> No
+
+
+

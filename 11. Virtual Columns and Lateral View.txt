@@ -1,0 +1,32 @@
+Virtual Columns:
+================
+Virtual columns are not available in the table definition, but it has the details about the block name and block location details.
+
+Lateral View:
+=============
+Lateral view is nothing but If we have a table with array data type, and if we want to explode your data then you go for Lateral view
+Converting column into Rows
+
+Example:
+=======
+Column name 	datatype
+Deptid		int
+EmpID		Array<int>
+
+
+DepID		EMPID
+IT		[1,2,3,4]
+
+Select * from Employee Lateral view explode(EMPID) Mytable1 as Empid1;
+
+IT	1
+IT	2
+IT	3
+IT	4
+
+Multiple Lateral Views:
+========================
+SELECT * FROM exampleTable
+LATERAL VIEW explode(col1) myTable1 AS myCol1
+LATERAL VIEW explode(myCol1) myTable2 AS myCol2;
+

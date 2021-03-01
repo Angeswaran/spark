@@ -1,0 +1,29 @@
+Spark Core:-
+==============
+import org.apache.spark.sparkconf
+import org.apache.spark.sparkcontext
+import org.apache.spark.sql.SQLContext
+import org.apache.spark.sql.hive.HiveContext
+
+Spark-SQL:-
+==========
+import org.apache.spark.sql._
+import org.apache.spark.sql.Row --> Represents one row of output from a relational operator.
+import org.apache.spark.sql.Column --> A column that will be computed based on the data in a DataFrame.
+import org.apache.spark.sql.ColumnName --> A convenient class used for constructing schema.
+import org.apache.spark.sql.functions --> Commonly used functions available for DataFrame operations.
+import org.apache.spark.sql.SparkSession --> The entry point to programming Spark with the Dataset and DataFrame API.
+import org.apache.spark.sql.SQLContext --> The entry point for working with structured data 
+import org.apache.spark.sql.SQLImplicits --> A collection of implicit methods for converting common Scala objects into Datasets.
+import org.apache.spark.sql.SaveMode --> SaveMode is used to specify the expected behavior of saving a DataFrame to a data source.
+
+Commonly used functions:-
+==========================
+concat_ws(String sep, Column... exprs)
+coalesce(Column... e)
+min, max, sum, count, Avg
+current_date(), current_timestamp()
+rank, dense_rank, row_number
+explode
+lower, upper, substr
+lead, lag, first_value, last_value

@@ -1,0 +1,96 @@
+Spark Window Functions:-
+======================
+	Spark SQL supports three types of window functions, such as Ranking function, Analytical function, Aggregate functions.
+
+Ranking Functions --> rank, dense_rank, percent_rank, row_number
+Analytical --> Lead, Lag, first_value, last_value, cume_dist
+Aggregate Functions --> min, max, sum, count, avg
+
+Aggregate functions:-
+======================
+when we perform the aggregate function, it will be applied to each partition and return the aggregated value
+
+
+import org.apache.spark.sql.expressions.Window
+import org.apache.spark.sql.functions._
+
+val agg_sal = empsalary.withColumn("max_salary", max("salary").over(byDepName))
+			           .withColumn("min_salary", min("salary").over(byDepName))
+                
+
+agg_sal.select("depname", "max_salary", "min_salary")
+        .dropDuplicates()
+        .show()
+
+Ranking Functions:-
+====================
+This function will return the rank of each record within a partition,
+the rank function will keep the same rank for the same value and skip the next ranks accordingly.
+
+val rank_df = empsalary.withColumn("rank", rank().over(Window.partitionBy("depName").orderBy("salary".desc)))
+rank_df.show()
+
+2. dense_rank
+dense_rank function will keep the same rank for same value but will not skip the next ranks.
+
+val dense_rank_df = empsalary.withColumn("dense_rank", dense_rank().over(Window.partitionBy("depName").orderBy("salary".desc)))
+
+dense_rank_df.show()
+
+3. row_number:-
+
+This function will assign the row number within the window.
+
+
+val row_num_df = empsalary.withColumn("row_number", row_number().over(Window.partitionBy("depName").orderBy("salary".desc)))
+
+row_num_df.show()
+
+
+Analytical Functions:-
+======================
+1. Lead --> This function will return the value prior row from Dataframe
+
+The lag function takes 3 arguments (lag(col, count = 1, default = None)),
+col: defines the columns on which function needs to be applied.
+count: for how many rows we need to look back.
+default: defines the default value.
+
+val winSpec = Window.partitionBy("depName").orderBy("salary")
+
+val lag_df = empsalary.withColumn("lag", lag("salary", 2).over(winSpec))
+
+lag_df.show()
+
++---------+-----+------+----+
+|  depName|empNo|salary| lag|
++---------+-----+------+----+
+|  develop|    7|  4200|null|
+|  develop|    9|  4500|null|
+|  develop|   10|  5200|4200|
+|  develop|   11|  5200|4500|
+|  develop|    8|  6000|5200|
+|    sales|    4|  4800|null|
+|    sales|    3|  4800|null|
+|    sales|    1|  5000|4800|
+|personnel|    5|  3500|null|
+|personnel|    2|  3900|null|
++---------+-----+------+----+
+
+
+2. Lead --> This function will return the value after the offset rows from DataFrame
+
+lead function takes 3 arguments (lead(col, count = 1, default = None))
+col: defines the columns on which the function needs to be applied.
+count: for how many rows we need to look forward/after the current row.
+default: defines the default value.
+
+val winSpec = Window.partitionBy("depName").orderBy("salary")
+
+val lead_df = 
+          empsalary.withColumn("lead", lead("salary", 2).over(winSpec))
+
+lead_df.show()
+
+
+

@@ -1,0 +1,134 @@
+===================
+hive properties:-
+===================
+-- Print Header with the result ---
+set hive.cli.print.header = true;
+
+-- Print Current DB name --
+set hive.cli.print.current.db = true;
+
+-- Variable Substitution --
+Set hive.variable.substitution = true;
+
+-- How to disable Compression ---
+set hive.exec.compress.output=false;
+
+-- Set max Mappers and Reducers--
+SET hive.exec.reducers.max=2048;
+
+How to set no of mappers and reducers:-
+SET mapred.map.tasks=8196;
+SET mapred.reduce.tasks=8196;
+
+-- Dynamic partitions --
+SET hive.exec.dynamic.partition=true
+SET hive.exec.dynamic.partition.mode=nonstrict;
+SET hive.exec.max.dynamic.partitions=10000;
+SET hive.exec.max.dynamic.partitions.pernode=100000;
+
+-- Bucketing -- 
+set hive.enforce.bucketing = true;
+
+-- change the Queue name --
+SET mapred.job.queue.name=finance;
+
+-- Enable Vectorization ---
+SET hive.vectorized.execution.enabled=false;
+SET hive.vectorized.execution.reduce.enabled=false;
+
+--- java heap memory issue (Vertex Error ) --
+set mapreduce.map.memory.mb=5120
+set mapreduce.reduce.memory.mb=6144
+set mapreduce.reduce.java.opts=-Xmx4915m (80% of Map memory)
+set mapreduce.map.java.opts=-Xmx4096m (80% of Reduce memory)
+
+-- Change Queue name to Tez and change properties --
+SET hive.execution.engine=tez;
+SET tez.queue.name=finance;
+SET hive.tez.container.size=16384;
+SET hive.tez.java.opts=16384;
+SET tez.runtime.io.sort.mb=16384;
+SET hive.convert.join.bucket.mapjoin.tez=true;
+SET tez.am.container.reuse.enabled=true;
+
+-- Map Join ----
+SET hive.auto.convert.join=true;
+set hive.auto.convert.join.noconditionaltask = true;
+set hive.auto.convert.join.noconditionaltask.size = 10000000;
+
+-- Bucket Map Join --
+SET hive.optimize.bucketmapjoin=true;
+SET hive.optimize.bucketmapjoin.sortedmerge=true;
+
+-- Skew Joins ---
+SET hive.optimize.skewjoin = true;
+
+-- disable move task parallelism by (After upgraded to HDP 2.5) --- (If Number of partitions are more, Then Framework will move the files to different destination directory, In HDP 2.5, Hive Task Introduced, Move task Parallelism with default as 15 concurrent threads, during the copy phase Metastore failing with the Query. It can be solved by below)
+set hive.mv.files.thread=0;
+
+-- Small files properties --
+set hive.merge.mapfiles=true;
+set hive.merge.mepredfiles = true;
+set hive.merge.size.per.task = 256000000;
+set hive.merge.smallfiles.avgsize = 256000000;
+
+SET parquet.block.size=33554432;
+SET parquet.page.size=262144;
+
+
+
+
+
+---------------
+
+Zero Byte files: 
+
+Check 0 byte files count 
+hadoop fs -lsr /apps/finance/nest/ | grep part- | awk '{ if ($5 == 0) print $8 }' | wc –l 
+
+
+Remove zero bye files
+hadoop fs -lsr /apps/finance/nest/ | grep part- | awk '{ if ($5 == 0) print $8 }' | xargs hadoop fs -rm
+
+
+Count at folder level:
+
+hdfs dfs -count /apps/finance
+      161936       855800    143401992965574 /apps/finance        - Column 1 – folders count  Column 2-  files count  Column 3 – total size in . 
+
+You can compute avg file size as  column3/(column2*1024*1024)  =  (143401992965574)/( 855800  *1024 * 1024)  
+
+To navigate for subfolders:
+
+hdfs dfs -count  /apps/finance/*
+           2            2                339 /apps/finance/PFiT_HANA
+       42666       135014     29402398901041 /apps/finance/TBD
+           1            0                  0 /apps/finance/Xoom_subledger_subledger_note_D_WHERE_raw
+          59        32834        11477362902 /apps/finance/admins
+          33         7436     34104936662870 /apps/finance/backup
+           2            2             244422 /apps/finance/jars
+       76038       425462     67972598269570 /apps/finance/nest
+       10192        71864      1373184336299 /apps/finance/nest_dev
+
+	   
+hadoop fs -lsr /apps/finance/watch/watch_2_dim_metric_log1_hist/ | grep part- | awk '{ if ($5 == 0) print $8 }' | wc –l 
+
+
+
+----------------------- 
+
+Sort by --> 
+
+1. used to sort the rows before feeding the rows into reducer. (Sorting is happening in mapper).
+2. It orders the data in each reducer. But each reducer is having overlapping range of data. But total order is missing.
+
+Order by
+
+1. ORDER BY guarantees total ordering of data, but for that it has to be passed on to a single reducer, 
+
+spark-sql --driver-java-options "-Dlog4j.configuration=file:///x/home/anshanmugasundar/log4j.properties"   --executor-memory 6g --executor-cores 2 --conf spark.sql.shuffle.partitions=100 --conf spark.dynamicAllocation.initialExecutors=2  --conf spark.dynamicAllocation.minExecutors=2 --conf spark.dynamicAllocation.cachedExecutorIdleTimeout=99999 --conf spark.dynamicAllocation.executorIdleTimeout=30  --queue finance
+
+spark-sql --executor-memory 6g --executor-cores 2 --conf spark.dynamicAllocation.initialExecutors=2  --conf spark.dynamicAllocation.minExecutors=2 --conf spark.dynamicAllocation.cachedExecutorIdleTimeout=99999 --conf spark.dynamicAllocation.executorIdleTimeout=30  --queue finance
+
+
+

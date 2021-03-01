@@ -1,0 +1,27 @@
+import org.apache.Spark._
+import org.apache.spark.streaming._
+
+val conf = new SparkConf().setMaster("local[2]").sepAppName("WordCount") 
+Val ssc = new StreamingContext(conf,Seconds(1)) //Create local streaming context with two execution threads and Batch interval as 1 sec.
+
+Creating D-Stream from TCP source, we have to give hostname and port.
+// Create a DStream that will connect to hostname:port, like localhost:9999
+val lines = ssc.socketTextStream("localhost",9999)
+lines represents Stream of data, which will be received from data sources for batch interval duration.
+
+Now we need to split the record by space characters,
+
+val words = lines.flatmap(_.split(" ")) //Split each lines into words.
+
+Count each word in each batch,
+
+val pairs = words.map(word => (word,1))
+val wordCount = pairs.reduceByKey(_+_)
+
+wordCount.print
+
+If you execute this code, Streaming Context only created, Real processing will not started. 
+
+To start that,
+ssc.start()
+ssc.awaitTermination()

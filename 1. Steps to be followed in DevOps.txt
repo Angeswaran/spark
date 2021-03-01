@@ -1,0 +1,19 @@
+1. Raise the request to create Feature branch. 
+2. Once Feature branch created, Check in the Code to Feature branch through Github.
+3. Create Build pipeline with new folders if required. .yml file will be opened. do the Configuration for copy the files from Feature Repo to Build Artifacts. 
+4. Run the Build Pipeline, file is copied to Feature repo to Artifacts.
+5. Create Release pipeline on top of the Build pipeline. 
+6. Add the Artifacts to Release pipeline and Add different stages to Release pipeline like dev_release, qa_release, prod_release, dev_rollback, qa_rollback, prod_rollback.
+7. Inside the each stage, can have backup_task and release _task.
+
+QA deployment:-
+=================
+8. Raise one pull request to move the files from Feature branch to develop branch. Once Pull request is Approved, files will be copied to Feature branch to develop branch.
+9. Change the source of the Build pipeline to develop branch and run the Build pipeline, Files will be copied from develop branch to Artifacts.
+10. Run the QA stage of release pipeline and files are copied from Artifacts to qa.
+
+Prod Deployment:-
+=================
+1. Raise one pull request to move the files from develop branch to Release branch. Once Pull request is Approved, files will be copied to develop branch to release branch.
+2. Change the source of the Build pipeline to Release branch and run the Build pipeline, Files will be copied from Release branch to Artifacts.
+3. Run the Prod stage of release pipeline and files are copied from Artifacts to Prod.

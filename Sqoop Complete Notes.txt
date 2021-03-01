@@ -1,0 +1,613 @@
+1. Sqoop import
+2. Sqoop import all tables
+3. Sqoop export
+4. Sqoop Jobs
+5. Sqoop Metastore
+6. Sqoop-merge
+7. Sqoop-Codegen
+8. Sqoop Create hive table
+9. Sqoop eval
+10. Sqoop list databases
+11. Sqoop List Tables
+12. Sqoop help
+13. Sqoop Version
+
+Sqoop Introduction:-
+===================
+--> Sqoop is a data warehouse tool, which is used to import and Export the data from RDBMS to HDFS, hive, No SQL database like Hbase.
+--> Sqoop will read the Metadata from RDBMS and launch Map Job to pull the data from RDBMS to HDFS.
+--> It is a Map only job.
+
+Internal Working:-
+-----------------
+1. When you are running the import query,
+1. Sqoop will read the meta data from RDBMS
+2. launch the Map reduce Job
+3. Map will read the data from RDBMS and Write it to destination.
+
+Sqoop Import: 
+============
+Connecting to the Database Server:  (--connect, --username, --password, -P, --password-file)
+--------------------------------
+	Sqoop is designed for import the tables from Database to HDFS, For that We need to connection string,
+	
+Sqoop import --connect jdbc:mysql://localhost/PMS --username root --Password root 
+
+ --password parameter is insecure, Others can easily read your password. So instead of using --password, you can use -P, It will prompt for Password and it will read it from Console.
+ 
+ Sqoop automatically supports several databases, First, download the appropriate JDBC driver for the type of database you want to import, 
+ and install the .jar file in the $SQOOP_HOME/lib directory on your client machine.
+ 
+ Selecting the Data to import:  (--table, --columns, --where, --boundary-query)
+ ----------------------------
+ 1. Use the --table argument to select the table to import. For example, --table employees.
+ 2. By default, all columns within a table are selected for import in Natural order.
+ 3. You can select a subset of columns and control their ordering by using the --columns argument. like --columns "name,employee_id,jobtitle".
+ 4. You can control which rows are imported by --where clause, --where "id > 400".
+ 5. By default sqoop will use query select min(<split-by>), max(<split-by>) from <table name> to find out boundaries for creating splits. In some cases this query is not the most optimal so you can specify any arbitrary query returning two numeric columns using --boundary-query argument.
+
+Free-form Query Imports: (--query, --target-dir, --split-by, $conditions, -m 1)  
+-----------------------
+1. Sqoop can also import the result set of SQL query. using --query tool.
+2. When importing a free-form query, you must specify a destination directory with --target-dir.
+3. If you want to import the results of a query in parallel, then each map task will need to execute a copy of the query, Your query must include the token $CONDITIONS, When you are giving --query, It may not have a primary key, It is difficult to decide boundaries, So we can use --split-by column name, It will split the record for boundaries.
+$ sqoop import \
+  --query 'SELECT a.*, b.* FROM a JOIN b on (a.id == b.id) WHERE $CONDITIONS' \
+  --split-by a.id --target-dir /user/foo/joinresults
+  
+ 4. If query can be executed once and imported serially, by specifying a single map task with -m 1:
+ 
+ $ sqoop import \
+  --query 'SELECT a.*, b.* FROM a JOIN b on (a.id == b.id) WHERE $CONDITIONS' \
+  -m 1 --target-dir /user/foo/joinresults
+  
+ "SELECT * FROM x WHERE a='foo' AND \$CONDITIONS"
+ 
+ Controlling Parallelism: (-m 1 or --num-mappers) 
+ ------------------------
+ 1. Sqoop imports data in parallel from most database sources. We can control parallel process by -m or --num-mappers orgument.
+ 2. By defaultl, 4 tasks are used. Some databases may see improved performance by increasing this value to 8 or 16. Increae the number of mappers should be based on cluster configuration.
+ 3. If you had a table with a primary key column of id whose minimum value was 0 and maximum value was 1000, and Sqoop was directed to use 4 tasks, Sqoop would run four processes which each execute SQL statements of the form SELECT * FROM sometable WHERE id >= lo AND id < hi, with (lo, hi) set to (0, 250), (250, 500), (500, 750), and (750, 1001) in the different tasks.
+ Use --split-by argument to specify the Splitting column.
+ 
+ Controlling the Import Process: (--direct, --direct-split-size, Default import path, --warehouse-dir (Parent directory),  --append)
+ -------------------------------
+ 1. By default, the import process will use JDBC to import the data from database to hdfs. Some databases can perform import operation very fastly by using database - specific data movement tools. For example, My sql provides mysqldump tool which can export data from MySQL to other systems very quickly.
+ 2. Using --direct argument, Sqoop should attempt direct import channel with out JDBC. Currently, direct mode does not support imports of large object columns.
+ 3. When importing from PostgreSQL with direct mode, you can split the import into separate files using --direct-split-size argument.
+ 4. By default, Sqoop imported data to /user/username/Tablename. You can specify the parent directory by --warehouse-dir argument.
+ 5. This will import the files into the /dest directory. --target-dir is incompatible with --warehouse-dir. --------------------------------
+ 
+ By default, imports go to a new target location. If the destination directory already exists in HDFS, Sqoop will refuse to import and overwrite that directory's contents. If you use the --append argument, Sqoop will import data to a temporary directory and then rename the files into the normal target directory
+ 
+--------------------------------------------------------------------------------------------------------------------------------------------
+Argument                               Description  
+--------------------------------------------------------------------------------------------------------------------------------------------
+--append                               Append data to an existing dataset in HDFS
+--as-avrodatafile                      Imports data to Avro Data Files
+--as-sequencefile                      Imports data to SequenceFiles
+--as-textfile                          Imports data as plain text (default)
+--as-parquetfile                       Imports data to Parquet Files
+--boundary-query <statement>           Boundary query to use for creating splits
+--columns <col,col,col…>               Columns to import from table
+--delete-target-dir                    Delete the import target directory if it exists
+--direct                               Use direct connector if exists for the database
+--fetch-size <n>                       Number of entries to read from database at once.
+--inline-lob-limit <n>                 Set the maximum size for an inline LOB
+-m,--num-mappers <n>                   Use n map tasks to import in parallel
+-e,--query <statement>                 Import the results of statement.
+--split-by <column-name>               Column of the table used to split work units. Cannot be used with --autoreset-to-one-mapper option.
+--autoreset-to-one-mapper              Import should use one mapper if a table has no primary key and no split-by column is provided. 
+                                       Cannot be used with --split-by <col> option.
+--table <table-name>                   Table to read
+--target-dir <dir>                     HDFS destination dir
+--warehouse-dir <dir>                  HDFS parent for table destination
+--where <where clause>                 WHERE clause to use during import
+-z,--compress                          Enable compression
+--compression-codec <c>                Use Hadoop codec (default gzip)
+--null-string <null-string>            The string to be written for a null value for string columns
+--null-non-string <null-string>        The string to be written for a null value for non-string columns
+--------------------------------------------------------------------------------------------------------------------------------------------------
+
+ Incremental Imports:
+ --------------------
+ 1. Incremental imports are used to retrieve only rows newer than some previously-imported set of rows.
+ 
+ Three Arguments are used:
+ -------------------------
+ 1. --check-column (Column)
+ 2. --incremental (Mode) --> append, lastmodified.
+ 3. --last-value (Value) --> like 50
+
+ ---------------------------------------------------------------------------------------------------------------------------------
+ Argument				Description
+ ---------------------------------------------------------------------------------------------------------------------------------
+--check-column (col)	Specifies the column to be examined when determining which rows to import. 
+						(the column should not be of type CHAR/NCHAR/VARCHAR/VARNCHAR/ LONGVARCHAR/LONGNVARCHAR)
+--incremental (mode)	Specifies how Sqoop determines which rows are new. Legal values for mode include append and lastmodified.
+--last-value (value)	Specifies the maximum value of the check column from the previous import.
+-----------------------------------------------------------------------------------------------------------------------------------
+
+bin/sqoop import --connect jdbc:mysql://localhost/test --username root --password root
+		 --check-column Marks --incremental append --last-value 50
+
+bin/sqoop import --connect jdbc:mysql://localhost/test --username root --password root
+		 --check-column Date --incremental lastmodified --last-value '2016-05-25'
+ 
+ File Formats:
+ -------------
+ 1. Only two types of files only can import, Delimited Text and Sequence file. Delimited text is the default import format. You can also specify it explicitly by using the --as-textfile argument. 
+ 2. By default, data is not compressed. You can compress your data by using (gzip) algorithm with --compress argument,
+ 
+ File format arguments:
+ ----------------------
+ 1. --as-textfile --> Imports data to plain text (default)
+ 2. --as-sequencefile --> Imports data to sequence file.
+ 3. --as-avrodatafile --> Imports data to Avro data files.
+ 
+ Large Objects:
+ --------------
+ 1. Sqoop handles large objects (BLOB and CLOB columns) in particular ways. They can not store the data in memory. If the data is truley large, They can store the data in secondary storage linked to a primary storage. By default large objects less than 16 MB in size are stored inmemory. More than that they are stored in files in the _lobs subdirectory. 
+ Size of the lob is handled by --inline-lob-limit argument. If you set the inline LOB limit to 0, all large objects will be placed in external storage.
+ 
+ Output line formating Objects:
+ ------------------------------
+ 1. --enclosed-by 					--> Sets field enclosing charcter.
+ 2. --escaped-by 					--> Sets a Escaping charcter.
+ 3. --fields-terminated-by 			--> Sets Fields separator charcter.
+ 4. --lines-terminated-by 			--> Sets end line separator
+ 5. --my-sql-delimiters 			--> Use MySQL's default delimiters Fields: , Lines: \n encaped-by: \ optionaly-enclosed-by: '
+ 6. --optionaly-enclosed-by 		--> Sets field enclosing charcter.
+ 
+ When importing to delimited files, the choice of delimiter is important. (Default delimitter --> Comma ,)
+ 
+ Delimiters may be specified as:
+ 
+ a) a charcter (Fields-terminated-by X)
+ b) an escape charcter (Fields-terminated-by \t) 
+ 
+ Supported Escaped charcter are,
+ 
+ a) \b (backspace)
+ b) \n (new line)
+ c) \t (tab)
+ d) \\' (Single quote)
+ e) \" (Double quote)
+ f) \\ (backslash)
+ g) \0 (NULL)
+ 
+ The default delimiters are a comma (,) for fields, a newline (\n) for records, no quote character, and no escape character. Note that this can lead to ambiguous/unparsible records if you import database records containing commas or newlines in the field data. For unambiguous parsing, both must be enabled. For example, via --mysql-delimiters.
+ 
+ Example:
+ --------
+ 
+Some string, with a comma.
+Another "string with quotes"
+
+$ sqoop import --fields-terminated-by , --escaped-by \\ --enclosed-by '\"' ...
+
+"Some string, with a comma.","1","2","3"...
+"Another \"string with quotes\"","4","5","6"...
+
+This will double quote for all fields, so you should use --optionaly-enclosed-by,
+
+$ sqoop import --optionally-enclosed-by '\"' (the rest as above)...
+
+"Some string, with a comma.",1,2,3...
+"Another \"string with quotes\"",4,5,6...
+
+
+Input parsing objects:
+----------------------
+1. --input-enclosed-by <char> -->
+2. --input-escaped-by <char> -->
+3. --input-fields-terminated-by <char> -->
+4. --input-lines-terminated-by <char> -->
+5. --input-optionally-enclosed-by <char> --> 
+
+When importing data to hdfs, delimitters is mentioned through argument as --fields-terminated-by, but when you are reading the data, we should mention the dlimitter field as --input-fields-terminated-by argument.
+
+Hive Arguments:
+===============
+--hive-home  				--> overrides the hive homer/work/import
+--hive-import   			--> Import the table into Hive
+--hive-overwrite   			--> Overwrite existing data in the Hive table.
+--hive-table <table-name>  	--> Sets the table name to use when importing to Hive.
+--create-hive-table  		--> It will create the table schema only. Not import any data.
+--hive-partition-key  		--> give the partition name
+--hive-partition-value <v>  --> give the partition value.
+
+8. --hive-drop-import-delims -->
+9. --hive-delims-replacement --> 
+-------------------------------------------------------------------------------------------------------------------------
+Argument						Description
+-------------------------------------------------------------------------------------------------------------------------
+--hive-home <dir>			--> Override $HIVE_HOME
+--hive-import				--> Import tables into Hive (Uses Hive’s default delimiters if none are set.)
+--hive-overwrite			--> Overwrite existing data in the Hive table.
+--create-hive-table			--> If set, then the job will fail if the target hive
+								table exits. By default this property is false.
+--hive-table <table-name>	--> Sets the table name to use when importing to Hive.
+--hive-drop-import-delims	--> Drops \n, \r, and \01 from string fields when importing to Hive.
+--hive-delims-replacement	--> Replace \n, \r, and \01 from string fields with user defined string when importing to Hive.
+--hive-partition-key	    --> Name of a hive field to partition are sharded on
+--hive-partition-value <v>	--> String-value that serves as partition key for this imported into hive in this job.
+--map-column-hive <map>	    --> Override default mapping from SQL type to Hive type for configured columns.
+---------------------------------------------------------------------------------------------------------------------------
+
+
+$SQOOP_HOME/bin/sqoop import --connect jdbc:oracle:thin:@192.168.41.67:1521/orcl --username orcluser1 --password impetus 
+--hive-import 
+--table DEMO2 
+--hive-table "DEMO2" 
+--columns ID,NAME 
+--hive-partition-key 'COUNTRY' 
+--hive-partition-value 'INDIA' 
+--m 1 
+--verbose 
+--delete-target-dir 
+--target-dir /tmp/13/DEMO2
+
+Import-all-Table:
+-----------------
+The import-all-tables tool imports a set of tables from an RDBMS to HDFS. Data from each table is stored in a separate directory in HDFS.
+
+--exclude-tables table1, table2   --> Import all tables with exclude some tables.
+
+Conditions to be satisfied:
+--------------------------
+1. Each table should have a primary-key
+2. we should import all columns of the table
+3. we dont use where clause. (Import all records of the table)
+
+$ sqoop import-all-tables --connect jdbc:mysql://db.foo.com/corp
+
+
+Sqoop Export:
+============
+It is used to export the data from HDFS to RDBMS. target table must already exist in the database.
+The input files are read and parsed into a set of records according to the user-specified delimiters.
+
+Default operation, Data will be inserted to RDBMS.  In "update-mode", Sqoop will generate UPDATE statements to update the record.
+
+Conditions to be statisfied:
+----------------------------
+1. The --table and --export-dir arguments are required. 
+2. we can control number of mappers by -m or --num-mappers
+3. We can use direct mode of export --direct argument.
+
+Common Arguments:
+-----------------
+1. --connect -->
+2. --username -->
+3. --password -->
+4. -P -->
+5. --verbose --> Giving more information, while working.
+
+Export Control Arguments:
+-------------------------
+--table <table-name>    				--> Table to populate
+--columns <col,col,col…>    			--> Columns to export to table
+--export-dir <dir>          			--> HDFS source path for the export
+--direct                    			--> Use direct export fast path
+-m,--num-mappers <n>        			--> Set n map task to set parallel
+--staging-table <staging-table-name>  	--> The table in which data will be staged before being inserted into the destination table.
+--clear-staging-table                	--> If any data present in the staging table can be deleted.
+--batch                           		--> Sqoop exports each row at a time comparatively it is slow, insert multiple rows together.
+--update-key <col-name>           		--> It is update only.
+--update-mode <mode>              		--> If the record is already present, Job will fail. Need to update the record.
+											update-only and allowinsert
+										
+9. --input-null-string -->
+10. --input-null-non-string -->
+------------------------------------------------------------------------------------------------------------------------------------------------
+Argument								Description
+------------------------------------------------------------------------------------------------------------------------------------------------
+--columns <col,col,col…>				--> Columns to export to table
+--direct								--> Use direct export fast path
+--export-dir <dir>						--> HDFS source path for the export
+-m,--num-mappers <n>					--> Use n map tasks to export in parallel
+--table <table-name>					--> Table to populate
+--call <stored-proc-name>				--> Stored Procedure to call
+--update-key <col-name>					--> Anchor column to use for updates. Use a comma separated list of columns if there are more than one column.
+--update-mode <mode>					--> Specify how updates are performed when new rows are found with non-matching keys in database.
+										--> Legal values for mode include updateonly (default) and allowinsert.
+--staging-table <staging-table-name>	--> The table in which data will be staged before being inserted into the destination table.
+--clear-staging-table					--> Indicates that any data present in the staging table can be deleted.
+--batch									--> Use batch mode for underlying statement execution.
+--input-null-string <null-string>		--> The string to be interpreted as null for string columns
+--input-null-non-string <null-string>	--> The string to be interpreted as null for non-string columns
+--------------------------------------------------------------------------------------------------------------------------------------------------
+
+Sqoop export in Batch option:- 
+------------------------------
+When you are exporting data to RDBMS, Then Sqoop will write the data record by record, It will be too slow. 
+For making faster you can use --batch it will insert multiple rows at the same time.
+
+Example:-
+
+sqoop export -Dsqoop.export.records.per.statement=10000
+-Dsqoop.export.statements.per.transaction=100 
+--direct --connect jdbc:oracle:thin:@scaj43bda01:1521:orcl 
+--username bds 
+--password bds
+--table orcl_dpi 
+--export-dir /tmp/dpi 
+--input-fields-terminated-by ','
+--lines-terminated-by '\n' 
+-m 70 
+--batch
+				
+Sqoop export in Staging Table Option:-
+--------------------------------------
+When you are exporting the data, In between if anything happens, not able to complete the job and JOb will be failed. part of the data only were inserted. 
+To avoid this situation, Sqoop provides Staging table option. First it will write all data into Staging table. then It will write it to Destination table in Single instances.
+Suppose if any Sqoop job failure, then data wont write any thing to Destination table.
+
+sqoop export \ 
+–connect jdbc:mysql://<host name-or-ip>/<db-name> \
+–username <user-name>  \
+–password <password> \
+--table "Employee" \
+— export-dir <directory-path-in-DBMS-side>  –staging-table  <staging_tablename>
+
+
+Inserts and Updates of Sqoop Export:-  (https://stackoverflow.com/questions/25887086/sqoop-export-using-update-key)
+-------------------------------------
+Note: --update-mode <mode> - we can pass two arguments "updateonly" - to update the records. this will update the records if the update key matches.
+if you want to do upsert (If exists UPDATE else INSERT) then use "allowinsert" mode.
+example: 
+--update-mode updateonly \ --> for updates (Update only)
+--update-mode allowinsert \ --> for upsert (Insert and Update)
+
+Ex:-
+
+sqoop export --connect <jdbc connection> \
+--username sqoop \
+--password sqoop \
+--table emp \
+--update-mode allowinsert \
+--update-key id \
+--export-dir <dir> \
+--input-fields-terminated-by ',';
+
+
+Note: --update-mode <mode> - we can pass two arguments "updateonly" - to update the records. this will update the records if the update key matches.
+if you want to do upsert (If exists UPDATE else INSERT) then use "allowinsert" mode.
+example: 
+--update-mode updateonly \ --> for updates
+--update-mode allowinsert \ --> for upsert
+
+
+The --table and --export-dir arguments are required for all situations.
+
+We can control number of mappers by -m or --num-mappers argument.
+
+The --input-null-string and --input-null-non-string arguments are optional. 
+
+When exporting data in to RDBMS, job may be failed due to some reason. That time partial data being inserted to database. This will lead to duplicate data in others. By specifying --staging-table we can overcome this problem, this table is used to stage the data, Finally stage data will be moved to destination table in a single transaction.
+
+Sqoop export --connect jdbc:mysql://localhost/test --username root --password root
+--table Employee
+--export-dir /data10
+--update-mode updateonly
+
+Inserts Vs Updates:
+-------------------
+By default, Sqoop will append the data to database, If destination table is having primary key constaints or will not allow dupliacte value, when you are exporting existing data to destination table then  export job fail.
+
+If you specify the --update-key argument, Sqoop will make a update query for existing data.
+
+--update mode --> what will do when matched records found during export 
+ allowinsert or updateonly (default)
+
+Updateonly --> It will only insert the data to RDBMS table.
+allowinsert --> It will do update operation for existing record.
+
+Example:
+--------
+CREATE TABLE foo(
+    id INT NOT NULL PRIMARY KEY,
+    msg VARCHAR(32),
+    bar INT);
+	
+0,this is a test,42
+1,some more data,100
+
+sqoop-export --table foo --update-key id --export-dir /path/to/data --connect
+
+UPDATE foo SET msg='this is a test', bar=42 WHERE id=0;
+UPDATE foo SET msg='some more data', bar=100 WHERE id=1;
+
+If you may also specify the --update-mode argument with allowinsert mode if you want to update rows if they exist in the database already or insert rows if they do not exist yet.
+
+If you specify --update-mode as updateonly to continue the normal flow (Insert only).
+
+Exports and Transactions:
+-------------------------
+1. Exports can be performed by multiple writers in parallel. Each writter can make Separate connection to the database. 
+2. Writter will perform multi row insert ie, 100 records per statement, once 100 statements are reached, then task will be commited, So task is commited when 10,000 row insert are reached.
+
+Failed Exports:
+===============
+1. Connectivity (hardware or Software fault)
+2. Duplicate record
+3. Parsing incomplete record
+4. parsing incorrect delimiters
+5. capacity issues (RAM or disk space)
+
+Sqoop-Job:
+==========
+	Job is used to create and work with saved jobs.
+	
+1. --create <job-id> --> Create a job
+2. --delete <job-id> --> Delete the job
+3. --exec <job-id> --> Run the job
+4. --show <job-id> --> Show the parameters for the job
+5. --list --> list all saved jobs
+
+$ sqoop job --create myjob -- import --connect jdbc:mysql://example.com/db \
+    --table mytable
+	
+Sqoop - merge:
+==============
+	Sqoop-merge is used to combine two datasets, where data in one dataset can overwrite data in another dataset.
+For example, when we are performing incremental load, new data are avaiable in one dataset, can append to existing dataset.
+
+Merge-options:
+==============
+1. --jar-file <file> --> 
+2. --class-name <class> -->
+3. --new-data <path> --> Path of Newer dataset
+4. --onto <path> --> path to older dataset.
+5. --merge-key <column-name> --> 
+6. --target-dir <path> --> Target path for output of merge job.
+
+
+The merge tool is typically run after an incremental import with the date-last-modified mode (sqoop import --incremental lastmodified Ö).
+
+Supposing two incremental imports were performed, where some older data is in an HDFS directory named older and newer data is in an HDFS directory named newer, these could be merged like so:
+
+$ sqoop merge --new-data newer --onto older --target-dir merged \
+    --jar-file datatypes.jar --class-name Foo --merge-key id
+
+Sqoop-create-hive-table:
+=======================
+1. If data was already loaded to HDFS, you want to create a only table and map the data location, you can use Create-hive-table argument.
+
+
+sqoop-eval:
+===========
+Evaluate the Query and display the result in screen.
+
+Example:
+--------
+$ sqoop eval --connect jdbc:mysql://db.example.com/corp \
+    --query "SELECT * FROM employees LIMIT 10"
+	
+sqoop-list-databases:
+======================
+List database schemas present on a server.
+
+Example:
+-------
+$ sqoop list-databases --connect jdbc:mysql://database.example.com/
+information_schema
+employees
+	
+sqoop-list-tables:
+==================
+List tables present in a database.
+
+$ sqoop list-tables --connect jdbc:mysql://database.example.com/corp
+employees
+payroll_checks
+job_descriptions
+office_supplies
+
+sqoop-version:
+=============
+Display version information for Sqoop.
+
+Example:
+-------
+sqoop version
+
+sqoop-help:
+==========
+List tools available in Sqoop and explain their usage.
+
+Example:
+--------
+sqoop help import
+
+============================
+Sqoop Performance Tunning:- (https://community.hortonworks.com/articles/70258/sqoop-performance-tuning.html)
+============================
+
+1. Split-by and --boundary-query
+2. direct
+3. fetch-size
+4. num-mappers
+5. batch 
+
+Batch:-
+--------
+
+insert into table values()
+insert into table values()
+insert into table values()
+
+Some databases wont allow to export multiple rows at a time.
+
+	sqoop export  --connect <<JDBC URL>>  
+	--username <<SQOOP_USER_NAME>>  
+	--password <<SQOOP_PASSWOR>>   
+	--table <<TABLE_NAME>>  
+	--export-dir <<FOLDER_URI>>  
+	--batch
+	
+Second option is "-D Sqoop.export.records.per.statement"  --> No of records that will be used in each insert Statement
+                     ---------------------------------- 
+INSERT INTO table VALUES (...), (...), (...), ...;
+
+sqoop export "-D sqoop.export.records.per.statement=10" \
+		--connect 
+		--username
+		--password
+		--table
+		--export-dir
+		
+
+Third option is "-D Sqoop.export.statements.per.transaction" --> How many rows will be inserted per transaction
+
+BEGIN
+	insert into table values  ()
+	insert into table values  ()
+	insert into table values  ()
+	.
+	.
+	.
+END
+	
+
+sqoop export "-D sqoop.export.statement.per.transaction=10"
+		--connect
+		--username
+		--password
+		--table
+		--export-dir
+		
+
+2. Split-by and --boundary-query:-
+	Split-by column is a column of the table which is used for split work units. If you are not mentioned any column in Split-by, then it will take primary key of the table for creating Splits.
+	
+if you don't get the boundaries by Split-by column, you can use --boundary-query argument to create the Splits.
+
+--boundary-query "Select 1,12 from table-name"
+
+3. direct
+
+sqoop import   --connect <<JDBC URL>>   
+--username   <<SQOOP_USER_NAME>>   
+--password  <<SQOOP_PASSWORD>>  
+--table <<TABLE_NAME>>   
+--direct
+
+4. Fetch-Size:
+	Number of entries that Sqoop can import at a time. Default 1000. Set the value based on the available memory and bandwidth.
+	
+5. Num-mappers:-
+			Default is 4 mappers. If you are increase, no of mappers are run in parallel.
+
+
+
+
+
+
+
+
+ 
+ 
+ 
+ 

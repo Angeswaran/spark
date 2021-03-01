@@ -1,0 +1,70 @@
+Concepts of YARN:-
+=================
+1. What is YARN?
+2. Advantage of YARN?
+3. What is Job Client?
+4. Resource Manager
+5. Node Manager
+6. Application Master
+
+
+
+YARN - Next gen of Map reduce:
+==============================
+1. Yet another resource negotiator 
+2. In map reduce 1, Scalability is a bottle neck, In 2010, Yahoo starts next generation map reduce with new feature to increase performance by Smarter memory utilization and enhance Scalability and flexibility
+3. Main Idea to Split the Job tracker responsibilities into two,
+	a) Resource Manager   (Resource Management)
+	b) Application Master (Job Management - Data processing)
+
+Advantages of YARN:
+===================
+1. Increased Scalability to Splitting the responsibilities of Job tracker into two, Resource manager and Application Master.
+2. Better Memory utilization with the Concept of Containers, Containers are similar to Slots concepts. 
+   In Clasic map reduce, slots are fixed in nature, But Containers are more flexible. Ex-
+   Single job tracker would have fixed number of slots specific for map task and reduce task,but containers in YARN can run map task, reduce tasks
+3. Other than Mapreduce program also can run in YARN.
+
+Entities in YARN:-
+==================
+1. Job Client:- Responsible for Submitting the job.
+2. Resource Manager:- Its responsible for allocating the resources to jobs that are required.
+					Resource manager responsibilities are divided into two components, which are Scheduler and Application Manager.
+					Scheduler - Scheduling the Job
+					Application Manager - Monitoring the Application
+					
+3. Node Manager:- It responsible to launch and manage containers
+
+4. Application Master:- It is responsible for co-ordinating the task running and monitor the progress and aggregates it and Sends the reports to the client.
+
+5. YARN Child:- It is responsible for send updates and progress to Application Master.
+
+Steps to How job runs in YARN:-
+===============================
+1. Job Submission Phase:-
+========================
+1. Job is submitted to Job client. Job client requesting Resource manager for new Application ID. Resource manager checks the output directory,
+   If it is present, then it will through error and Stop the job there itself. 
+   Or It will create the Application or Job.
+   
+Job Initialization:-
+===================
+1. Scheduler picks up the job and contacts Node manager to start new container for application Master.
+2. Application Master retrieves the split from HDFS and create one task per split.
+3. Next Application Master decides how to run Mapreduce job. If the job is Small, Then it will run the job in Same JVM itself.
+
+Task Assignment Phase:-
+=======================
+1. If the Job is Huge, Then Application Master will contact Resource Manager for resources. 
+   Scheduler knows where the splits are located, It gathers the information from Heart beat of the Node Manager. 
+   It will Allocate the resources to Application Master.
+2. Then Application Master contacts Node Manager to start containers for executing the tasks. Next YARN child will be launched, 
+   YARN child is nothing but Java program which has a Main program named as YARN Child.
+3. YARN child runs on a Separate JVM to isolate the User code from long running deamons, The same step will be happen in Clasic Mapreduce also.
+   But one difference is, Clasic mapreduce, Reuse of JVM is possible, But in YARN, Usage of same JVM for YARN child is not supported.
+4. YARN retrives the resources from HDFS and runs the Mapreduce Tasks.
+
+Progress Updates phase:-
+=======================
+1. YARN child send the progress report to Application master for every 3 seconds, Application Master Aggregates the progress and send to Client directly.
+Once tasks are completed, Application master and Containers are clean up his data.

@@ -1,0 +1,34 @@
+The project has been done for the client of Marina bay sands,
+
+Marina bay sands is a Casino Industry, where it has slot games and table games are playing across the floors.
+
+This project belongs to Slot games, Normally in Kiosk, List of promotions are loaded in this screen, Patron come and select his desired promotion and play. 
+
+The problem is Those patrons might not like this promotion which he was played and there is chance he will not come back again. So we need to bring them back again and play.
+
+The purpose of the project is Analysing the most popular promotions and which promotion is mostly liked by patrons and load those promotions in the top order. This will increase the possiblity to bring them back again.
+
+The Project flow is 
+
+1. logs (.txt) are getting downloaded from the application and Kafka producer will grap those logs and send it to Kafka broker. That time, kafka producer have to give broker details, no of Replication factor, no of partition details and Topic details.
+2. Consumer portion is Spark streaming, Spark streaming will consume those logs from the broker based on block interval and batch Interval defined during the Spark streaming context object creation. 
+3. During block interval, Spark streaming will consume the logs from kakfa and make partition for the RDD. Once batch interval time is received, Entire RDD will be created and make a D stream, Once RDD is created, Next block Interval and batch Interval process will be go on. 
+4. From the Dstream we will create a parent RDD, and applied our required transformation and actions to the parant RDD bases on business logics provided.
+5. So As a result,Fetching required data from the logs and Store it to the Cassandra database.
+
+Duration - 4 months
+Cluster Details:
+
+Development: (10 Node cluster)
+3 Node Kafka cluster + 1 Edge Node + 3 Node spark Cluster (1 Master + 2 Worker)
+(3 Broker + 2 Zookeeper Instances are running) + Cassandra  node cluster 
+
+Production: (12 Node cluster)
+5Node cluster
+
+10GB harddisk. 4GB RAM, 4Core Processor.
+
+after we can convert RDD to data frame by .toDF() method. 
+6. Once data frame is created, using registerTempTable method, we can SQL objects. we will register the table to SQL Context. after that we will put SQLContext.sql("Select * from patient" ), what ever query you want, you can run it.
+7. Store the result to RDBMS, then user can the real time application to View the result.
+

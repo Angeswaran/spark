@@ -1,0 +1,37 @@
+================
+HDFS Commands:-
+================
+
+hdfs fs -mkdir 			  --> To create the directory
+hdfs fs -cp 			  --> Copy the content to destination
+hdfs fs -cp -f 			  --> Copy the content to destination (Overwrites the destination file.)
+hdfs fs -copyFromLocal 	  --> Copy file from local to HDFS
+hdfs fs -copyFromLocal -f --> Copy file from local to HDFS (Overwrites the destination file.)
+hdfs fs -copyToLocal 	  --> Copy File to Local from HDFS
+hdfs fs -mv 			  --> Move file from HDFS to HDFS location
+hdfs fs -moveFromLocal    --> Move file from local to HDFS (Source file will not be there)
+hdfs fs -moveToLocal 	  --> Move file to local
+hdfs fs -cat 			  --> To view the data with out changing format.
+hdfs fs -get 			  --> download the file to local
+hdfs fs -put 			  --> Upload the file to HDFS. (There is no put -f command) It will get failed, already path exists
+hdfs fs -rm 	  		  --> Remove the file in HDFS
+hdfs fs -rm -f            --> It will do his work and does not tell anything even the file is not exists to remove
+hdfs fs -rm -r 			  --> Remove the folder in HDFS
+hdfs fs -rm -r -skipTrash --> Remove the folder in HDFS and it will going to Trash
+hdfs fs -du -h            --> display size of the files and directories.
+hdfs fs -du -h -s         --> display summarized size.
+hdfs fs -count  		  --> Check the file count of Particular directory
+hdfs fs -count -q -h      --> Display the Quota
+hdfs fs -chmod 			  --> Change the mode of file
+hdfs fs -chmod -R 777     --> Change the mode of folder
+hdfs fs -getmerge         --> Export the HDFS file to local file system with Same delimiter.
+hdfs fs -getmerge -addnl  --> adding a newline character at the end of each file.
+hdfs fs -expunge  		  --> Empty the Trash 
+hdfs fs -test -e  		  --> Check the path Exists
+hdfs fs -test -z  		  --> Check Zero size file
+hdfs fs -test -d  		  --> Check whether directory or not
+hdfs fs -text 			  --> Display the output in Text format.
+hdfs fs -touchz 		  --> creates a zero byte file.
+hdfs fs -setrep -w 3 path  --> Change the Replication of the files.  
+hdfs fs -tail              --> To see the last 3 lines of the file
+ 

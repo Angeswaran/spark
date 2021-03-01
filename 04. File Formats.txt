@@ -1,0 +1,264 @@
+﻿File Formats:
+=============
+1. It is used to find out which information is stored in a file system. 
+2. Hive does not verify whether the data that matches the schema of the table or not. However, it verifies if the file format matches the table definition or not.
+
+Data Formats:
+=============
+1. Text File
+2. Sequence File
+3. RC File
+4. ORC File
+5. Perquet
+6. Avro
+
+===========
+Text File:
+===========
+1. Its default File format used by Hive.
+2. If you define a table as a Text file format, then you can store CSV (Comma Separated Values), delimited by Tabs, Spaces, and JSON data.
+3. By default, if we use TEXTFILE format then each line is considered as a record. Byte offset is a key and Entire row is a Value.
+4. If we do not specify anything it will consider the file format as TEXTFILE format.
+
+The TEXTFILE input and TEXTFILE output format are present in the Hadoop package as shown below,
+
+org.apache.hadoop.mapred.TextInputFormat
+org.apache.hadoop.mapred.TextOutputFormat
+
+Example:
+--------
+create table Olympic(athlete STRING,age INT,country STRING,year STRING,closing STRING,sport STRING,gold INT,silver INT,bronze INT,total INT) row format delimited fields terminated by '\t' stored as textfile;
+
+Load Data:
+---------
+load data local inpath 'path of your file' into table Olympic;
+
+Select * from Olympic;
+
+===============
+Sequence File:
+===============
+Sequence files are flat files consisting of binary key-value pairs. It will read the files in Sequence. When Hive Query converts into MapReduce jobs, it decides on the appropriate key-value pairs to be used for a given record. 
+	
+The main use of these files is to club two or more smaller files into a one sequence file.
+
+Three types of Sequence File:
+-----------------------------
+1. Uncompressed Key/Value records
+2. Record compressed Key/Value records
+3. Block compressed Key/Value records
+
+Hive has its own SEQUENCEFILE reader and SEQUENCEFILE writer for reading and writing through sequence files.
+
+Create Table:
+------------
+create table olympic_sequencefile(athelete STRING,age INT,country STRING,year STRING,closing STRING,sport STRING,gold INT,silver INT,bronze INT,total INT) row format delimited fields terminated by '\t' stored as sequencefile
+
+Load Data:
+---------
+You need to insert the data from another table because this SEQUENCEFILE format is binary format. It compresses the data and then stores it into the table. 
+
+If you want to load directly as in TEXTFILE format that is not possible because we cannot insert the compressed files into tables.
+
+INSERT OVERWRITE TABLE olympic_sequencefile
+SELECT * FROM olympic;
+
+================================
+RCFile: (Record-Columnar File)
+================================
+--> RC file a record columnar file.
+--> RC files are flat files which consists of binary Key value pair. 
+--> It splits data horizontally into row groups and store it in a columnar format. For Example, If we have 1000 records in table, 1 to 100 records are stored in a one group, 101 to 200 stored in a next group and so on. RC file stores the Row Group in a columnar format. 
+
+Benefits of RC file:-
+----------------------
+1. Fast data loading
+2. Fast data processing
+3. highly efficient storage space utilization
+
+Example:-
+
+Actual Data:-
+-------------
+1	anges		EEE	 90
+2	gowtham		ECE	 95
+3	Jamuna 		CSE	 100
+
+RC file stored as
+
+1,		2,		  	3
+angesh,	Gowtham, 	Jamuna
+EEE, 	ECE, 		CSE
+90,		95,			100
+
+
+Create Table:
+-------------
+create table table_name (schema of the table) row format delimited by ',' | stored as RCFILE
+
+Load Data:
+---------
+We cannot load data into RCFILE directly. First we need to load data into another table and then we need to overwrite it into our newly created RCFILE as shown below:
+
+INSERT OVERWRITE TABLE olympic_rcfile
+SELECT * FROM olympic;
+
+==================================
+ORC File: (Optimized Row Columnar)
+==================================
+1. ORC stands for Optimized Row Columnar which means it can store data in an optimized way than the other file formats.
+2. ORC reduces the size of the original data up to 75%. As a result the speed of data processing also increases. ORC shows better performance than Text, Sequence and RC file formats.
+
+Internal Storage of ORC:-
+==========================
+--> ORC is a Optimized Row columnar. 
+--> It is a columnar storage format. The Internal Structure of ORC is divided into three. Those are 
+	a) Header
+	b) Body
+	c) Footer
+	
+Header:- 
+=======
+--> Header contains the text "ORC", which is used for other tools can identify the format.
+
+Body:-
+=======
+--> The Body contains actual data and Indexes.
+--> Actual data is stored in ORC file in the form of Rows is called as Stripes, Default Stripe size is 250 MB.
+--> Stripe is again divided into three more section,
+	a) Index data --> Set of Index data for the Stored data.
+	b) Row data
+	b) Stripe Footer
+	
+--> Both Index and Row data are stored in a form of columns. 
+--> Index column consists of Min and Max values of each columns and Row position of each columns.
+--> ORC indexes are used to locate the stripes based on requirement.
+
+--> Stripe Footer consists of column details, directory and location details.
+
+Footer:-
+==========
+--> Footer section is divided into three,
+	a) File Meta data
+	b) File Footer
+	c) Postscript.
+	
+--> File Metadata consists of Columns information with Stripe level.
+--> File Footer consists of list of Stripes in the file, No of rows  and data type of the column present in stripe.
+--> Postscript contains the version info and compression parameters.
+
+
+Create Table:
+--------------
+create table table_name (schema of the table) row format delimited by ',' | stored as ORC
+
+Load Data:
+---------
+We cannot load data into RCFILE directly. First we need to load data into another table and then we need to overwrite it into our newly created RCFILE as shown below:
+
+INSERT OVERWRITE TABLE olympic_orcfile
+SELECT * FROM olympic;
+
+Thus you can use the above four file formats depending on your data.
+For example,
+a) If your data is delimited by some parameters then you can use TEXTFILE format.
+b) If your data is in small files whose size is less than the block size then you can use SEQUENCEFILE format.
+c) If you want to perform analytics on your data and you want to store your data efficiently for that then you can use RCFILE format.
+d) If you want to store your data in an optimized way which lessens your storage and increases your performance then you can use ORCFILE format.
+
+Example:-
+--------
+CREATE TABLE text_table(line STRING);
+
+LOAD DATA 'path_of_file' OVERWRITE INTO text_table;
+
+CREATE TABLE orc_table STORED AS ORC AS SELECT * FROM text_table;
+
+SELECT * FROM orc_table;   /*(it can not be read)*/
+
+Difference between RC and ORC:
+------------------------------
+1. Compression is main difference between these two. ORC can compress upto 78% of original data. But RC compress only 14% of original size.
+2. Storage Space Utilization is more than RC format.
+3. ACID Supports only ORC format, Not available RC format.
+4. It has Much faster read time compared to RC format.
+5. ORC has Internal Index concept to search the data very faster, There is no such concepts available in RC format.
+
+Avro:
+=====
+--> Avro is data Serialization format, Bacause of Its language neutrality.
+--> Due to Lack of Language portability, Avro becomes Natural choice, which can able to handle Multiple Languages data.
+--> Avro is much preferable for Serializing the data in Hadoop.
+--> It uses the JSON for defining columns, data types and other stuffs.
+--> Schema is available in Separate file and actual data ia available in HDFS. 
+
+--> Schema is available in avsc file is the form of JSON.
+--> data is stored in a Avro file (1.avro)
+
+We need to sync both Schema and data.
+----------------------------------
+Sample avsc file:- Student.avsc
+---------------------------------
+{
+  "type": "record",
+  "name": "Student",
+  "fields": [
+    {
+      "name": "id",
+      "default": null,
+      "type": [
+        "null",
+        "string"
+      ]
+    },
+    {
+      "name": "name",
+      "default": null,
+      "type": [
+        "null",
+        "string"
+      ]
+    },
+    {
+      "name": "marks",
+      "default": null,
+      "type": [
+        "null",
+        "long"
+      ]
+    }    
+  ]
+}
+--------------------------------------------------------------------------
+Data stored in a Student.avro file - Using Sqoop We can load the data.
+-------------------------------------------------------------------------
+
+CREATE EXTERNAL TABLE IF NOT EXISTS College.Student
+            ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.avro.AvroSerDe'
+            STORED AS
+            INPUTFORMAT 'org.apache.hadoop.hive.ql.io.avro.AvroContainerInputFormat'
+            OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.avro.AvroContainerOutputFormat'
+            location 'hdfs://stampy/apps/Place/college/StudentInfo/'
+            TBLPROPERTIES ('avro.schema.url'='hdfs://stampy/apps/Place/college/StudentInfo.v1.avsc');
+			
+Reference: https://acadgild.com/blog/avro-hive
+
+Perquet:
+========
+
+--> Parquet format stores the data in Columnar format. which will increase speed of Querying data.
+--> Parquet is used in Cloudra and ORC is used in HortonWorks.
+
+1. Perquet is a record columnar storage format, It will increase speed of querying data when compared to Avro. 
+2. It doesnot have data evaluation, Perquet will not store the schema in separate file. So we can mention the schema in create table statement.
+3. Perquet is efficient, Columnar file format, If you want to do some columns group by, sum and count (Calculation of some columns) Perquet file format is faster.
+4. Perquet is having a high compression compared to Avro.
+5. Perquet is used by Cloudra and ORC is used by Hortonworks.
+6. Perquet Compress 64% of Original data size.
+
+Difference between Avro and Parquet:-
+-------------------------------------
+1. Parquet is a columnar format, But Avro is Row Format.
+2. Parquet is having high Compression rate when compared to Avro.
+3. Processing Speed is High when compared to Avro.
+4. Parquet does not maintain schema in separate file as like Avro.

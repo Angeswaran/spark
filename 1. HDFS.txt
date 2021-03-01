@@ -1,0 +1,348 @@
+Concepts:-
+=========
+Big data:-
+---------
+1. what is Big data?
+2. Why we need big data?
+3. How it will be useful of organization?
+4. Difference between RDBMS and hadoop?
+
+Hadoop:-
+---------
+1.  Different V's of hadoop?
+2.  Main components of Hadoop and Other tools of hadoop?
+3.  Modes of Hadoop?
+4.  Types of data in hadoop?
+5.  Different Format in Hadoop?
+6.  Fault Tolerance and Replication?
+7.  Rack and Rack Awareness?
+8.  Block and Block Scanner?
+9.  File system and types?
+10. Deamon and JPS?
+11. Types of Deamons?
+12. Read and Write operation?
+13. Web UI port for all deamons?
+14. Configuration Files and What deamon associated with that?
+15. How to start all daemons and Individual Deamons?
+
+What is Big data?
+-----------------
+1. Big data is a problem to store large amount of data.
+2. It is difficult for retrive,process and do analysis of those data.
+3. To solve those issues, Hadoop comes into picture.
+
+Why do we need Hadoop?
+----------------------
+1. Everyday a large amount of unstructured data is getting dumped into our servers.
+2. The Major challenge is to store those large amount of data and Retrieve and do analysis of those data and also those present in different server in different locations.
+3. In this situation, Hadoop came into picture.
+4. Hadoop is having an ability to do analysis of those big data in different servers and different location very quickly.
+5. It uses the concept of MapReduce. it will divide the Query into Small parts and process them in parallel. This is also called as Parallel computing.
+
+How is Analysis of Big data will be use ful for organisation?
+--------------------------------------------------------------
+1. Effective analysis of Big Data gives a lot of Business profits. From that which area we need to give more focus and which area we need to give less importants.
+2. Big data analysis provides some key points to prevent the company from huge loss or grasping a great opportunity.
+
+What are the four characteristics of Big Data? or Four V's of Big data?
+------------------------------------------------------------------------
+1. Volume --> (Size of Data) Facebook generating 500 terabytes of data per day.
+2. Velocity --> (Analysis of Streaming data)  Analyzing 2 million records each day to identify the reason for losses.
+3. Variety --> (Different form of data) images, audio, video, sensor data, log files, etc.  Veracity: biases, noise and abnormality in data
+4. Veracity –-> Uncertainty of data
+
+What are the steps involved in deploying a big data solution?
+-------------------------------------------------------------
+i) Data Ingestion – The foremost step in deploying big data solutions is to extract data from different sources which could be an Enterprise Resource Planning System like SAP, any CRM like Salesforce or Siebel , RDBMS like MySQL or Oracle, or could be the log files, flat files, documents, images, social media feeds. This data needs to be stored in HDFS. Data can either be ingested through batch jobs that run every 15 minutes, once every night and so on or through streaming in real-time from 100 ms to 120 seconds.
+
+ii) Data Storage – The subsequent step after ingesting data is to store it either in HDFS or NoSQL database like HBase.  HBase storage works well for random read/write access whereas HDFS is optimized for sequential access.
+
+iii) Data Processing – The ultimate step is to process the data using one of the processing frameworks like mapreduce, spark, pig, hive, etc.
+
+What is a Difference between RDBMS and Hadoop?
+---------------------------------------------
+1. RDBMS is handing only structured data. But hadoop will handle Structured, semi structured and Unstructured data.
+2. RDBMS is supporting OLTP, But Hadoop is not suitable for OLTP, it is only for OLAP. 
+3. storing Transactional data, When we want to do analysis, that time we need to take backup and do analysis, 
+   But in Big data, No need to take backup and do analysis, It is storing the data in distributed file system and process it.
+4. Cost wise, Hadoop is cheaper, Because Hadoop cluster made up of commodity hardware.  But for RDBMS, renewal thing itself its taking more cost. (Teradata - 49000$)
+
+What basic concept of Hadoop Framework?
+--------------------------------------
+Hadoop framework works based on main two components,
+1. HDFS - HDFS is a file system which is designed for storing very large files and streaming data access patterns, running on the clusters of commodity hardwares.
+2. Map Reduce : Map reduce is a framework which is used to processing large datasets in parallel across the cluster.
+
+Main Components of Hadoop Application?
+--------------------------------------
+Core Components:
+---------------
+1. HDFS
+2. Map Reduce
+
+Data Access Components are - Pig and Hive
+
+Data Storage Component is - HBase
+
+Data Integration Components are - Apache Flume, Sqoop, Chukwa
+
+Data Management and Monitoring Components are - Ambari, Oozie and Zookeeper.
+
+Data Serialization Components are - Thrift and Avro
+
+Data Intelligence Components are - Apache Mahout and Drill.
+
+What are the Modes of Hadoop?
+----------------------------
+	1. Standalone mode:- If all Deamons are running same JVM is called as Standalone mode
+	2. Pseudo distributed mode:-  If All Deamons are running in different JVM in Single machine is called as Pseudo distributed mode.
+	3. Fully distributed mode:-  If all deamon are running in a different JVM and different machines is called as fully distributed mode.
+
+Types of data?
+--------------
+1. Structured data
+2. Semi structured data
+3. Un structured data
+
+Data which can be stored in traditional database system in the form of rows and columns is called as Structured data.
+Ex: Online transactional data
+
+Data which can be stored as partial traditional database system.
+Ex: XML and Json records are referred as semi structured data.
+
+Data which cannot be referred as Structured and Semi structured data is called as Un-Structured data.
+Ex: Facebook updates, Tweets on Twitter. web logs ..etc
+
+What are most input formats in Hadoop?
+--------------------------------------
+1. Text Input format - This is a default input format defined in Hadoop.
+2. Key Value input format => This input format is used for plain text files where the files are broken down into lines.
+3. Sequence File Input format => This input format is used for reading files in sequence.
+
+What is Fault Tolerance?
+-----------------------
+Data should be available after server down.
+Consider you have stored the data in one machine. Due to some technical issue, your file is destroyed. then there is no changes to get back the file.
+To Avoid these situation Hadoop is introduced Replication Concept. When storing itself Hadoop will replicate the copy into two more copies of data.
+
+What is hadoop Streaming?
+--------------------------
+hadoop distribution has a generic application programming interface for writing map and reduce jobs in any desired programming language like Python,perl,Ruby etc.. That is called as Hadoop streaming.
+
+What is a rack?
+----------------
+a) Rack is a storage area which contains all data node puts together.
+b) Rack is a physical collection of data nodes which are stored at a single location. There can be multiple racks in a single location.
+
+What is rack awareness?
+-------------------------
+	Rack awareness is a way which the name node determines how to place the blocks based on rack definitions.
+
+What is Block?
+---------------
+	A disk is having block size which is a minimum size to read and Write operation. A big file (500MB of data) is splitted into multiple chunks. Each chunks is called as Block.
+Default block size of the Hadoop 1.0 is 64 MB
+Default Block size of the Hadoop 2.0 is 128 MB
+
+What is Block Scanner?
+-----------------------
+	Block scanner tracks the list of blocks present in Data node and Verify that any Checksum Errors.
+
+What is File System?
+--------------------
+	It is used for read and write
+	Ex: NTFS, HDFS, S3..
+
+Types of file system?
+---------------------
+1. Standalone (Ex: Windows, Ext)
+2. Distributed (Ex: HDFS,S3)
+
+What is distributed OS computing?
+---------------------------------
+	More than one machine sharing the data.
+
+Types of distributed file system?
+---------------------------------
+	1. Master and Slave Architecture (Hadoop)
+	2. Peer to Peer Architecture (Casendra)
+
+What is Process?
+----------------
+	Program in Execution
+
+What is Deamon Process?
+-----------------------
+	Deamon is a process which runs in the background.
+
+What is JPS commands do?
+-------------------------
+JPS is Java process status which gives the status of deamon which are running in the cluster.
+
+How indexing is done in Hadoop?
+--------------------------------
+	Hadoop is having own way of Index Depending upon the block size. When the data is saved, HDFS will keep storing the last part of the data, it will say where is the next part of the data will be.
+
+What is the communication channel between client and namenode/datanode?
+------------------------------------------------------------------------
+	SSH Communication.
+
+Types of Deamons?
+-----------------
+	1. Name node
+	2. Data node
+	3. Job Tracker
+	4. Task Tracker
+	5. Secondary name node
+
+Each deamon is running separately in its own JVM
+
+Name Node:-
+-----------
+1. Name node is a deamon process, which is running in master machine. 
+2. It is used to store the metadata for files and directories in the form of Edits and fsImage. All recent transactions are available in Edits log, when restarts happens, It will sync with Edits log data. By default it will take time. So During the particular time, Edit log will be flushed to fsImage. This duration is called as Safe mode. During the Safe, Read and Write operation will not be happened. 
+To avoid Safe mode, Secondary name node comes into picture. 
+
+The Process of merging edits with fsImage is called as Checkpointing.
+
+Thats why Every one hour (dfs.namenode.checkpointing.period) or No of transactions reaches 1 Million (dfs.namenode.checkpointing.txns) Checkpointing services will do process of merging edits file with fsImage file. This process is called as Checkpointing. 
+
+Note: whenever new fsimage is created. It will merge with existing fsimage and renaming to new fsimage. Becuase if any problem, current fsimage file gets corrupted, then previous fsimage is having older data.
+
+Question is how SNN will know about the transactions happened in NN.?
+----------------------------------------------------------------------
+Every 60 sec, SNN pinging NN about that howmany un-merged transactions are happened.?
+
+why multiple fsimage are there in the folder?
+----------------------------------------------
+when ever checkpointing is happened, new fsimage will be created, because if any problem, current fsimage file gets corrupted, then previous fsimage is having older data.
+
+why md5 file there in fsimage?:
+------------------------------
+It is used to check whether fsImage is corrupted or not.
+
+How to decide that fsimage is correupted?
+------------------------------------------
+	Actually when reading and writing operation happens, new fsImage will be created, when write operation happens, it compares current checksum with oldest check sum, If its not matched, then fsimage is correupted.
+
+Why NN Edits and fsImage are not in hdfs.? It is in NN Ram memory?
+---------------------------------------------------------------------
+1. Edit and fs iamge are keep updating, If it is in HDFS, you should not be modified it. Write Once. It is read only.
+2. Name node is having more security than data nodes.
+
+Limitations of Check point node?
+--------------------------------
+1. NN is required some more time to restart. 
+2. data loass, Ex: My transaction is happening 8 --> 9 --> 10 --> 10:30 NN is failed, when checkpointing is happening between 10 to 10:30, The dta might be lost.
+
+To Overcome this issue hadoop comes up with Backup Node.
+
+Difference between Checkpoint node and Secondary Name node?
+-----------------------------------------------------------
+
+Check Point node                                                                                       Secondary Name node:
+-----------------                                                                                      ---------------------
+1. After check point process, It will update merged new fsimage with Active Name node fsImage.         1. After check point process, It will not update merged new fsimage with Active Name node fsImage.
+
+
+Backup Node:
+============
+1. Name node RAM is always sync with Backup node RAM. What ever transaction is happening in NN will be synced to Backup node.
+2. There is no check pointing will be happening in Active name node.
+3. Check pointing is directly happening in Backup node.
+
+Case 1 is NN Restarts, No need to any merge. NN is  having up to date metadata.
+Case 2 is NN is dead, No data loss, all datas are avilable in Backup node.
+
+Same configuration and directory structure settings in both NN and Backup node.
+
+Limitation of Backup Node:
+=========================
+1. Both NN and backup node is down, rare case, we can not do anything.
+2. For going SNN/Check pointing node, We can any numbers of nodes. But for Backup node. we should connect only one backup node.
+
+High Availablity:
+================
+1. Active NN and Standby Namenode
+When both are available, All write operation will be take care by Active NN and All read operation will be take care of Stand by NN.
+
+
+Data Node:
+---------
+1. Data node is a deamon process, which is running in Slave machines.
+2. It is used to Store and Retrieve data when its required.
+3. It is sending heart beat to Name node for every 3 seconds.
+
+Job Tracker:-
+------------
+1. Job tracker is a deamon process, which is running in Name node.
+2. It is used to Submit and Tracking of Map reduce jobs.
+3. It will receive heart beat from Task tracker for every 3 seconds
+4. There is a only one job tracker will be available for the cluster
+5. Job tracker is a Single point of failure.
+
+Task Tracker:-
+-------------
+1. Task tracker is a deamon process, which is running in Data node.
+2. It is used to launch and monitoring the tasks in corresponding data nodes.
+3. It will send heart beat to job tracker for every 3 seconds.
+
+Secondary Name node:-
+----------------------
+1. Secondary name node is used to do check pointing process for every one hour or number of transaction reaches 1 million transactions.
+2. After checkpointing, It will not update recent fsimage with Active name node fsimage.
+
+Failure Cases:
+------------
+1. If name node down, --> In High availability cluster, we have more than two name nodes.  If any one name node is down, Zookeeper will  ask Passive name node to act as Active name node.
+2. If Data node down, --> data node stops sending heart beat to Name node. Name node and Job tracker will detect Data node fails,  Name node will replicate the copy of data to another data node and Job tracker will reassign the task to another task tracker.
+3. If Job tracker down --> ?? Cluster will be down
+4. If Task tracker is down --> It stops sending heart beat to Job tracker, Job tracker detects that task tracker down, It will re-assign the task to another task tracker for 4 times. Thereafter If it fails Then entire job will be failed.
+5. If Secondary Name node down --> If Secondary name node down, Safe mode will happen. Every one hour, Edits in Name node will flush it to fsImage, That time no read and Write operation will happened
+
+Write Operations:-
+==================
+1. When write operation came to cluster, First Client API will be created, After that Client API sending request to name node, Name node is going to generate 3 meta data's.
+	a) Generation of blocks, B0,B1,B2,B3...B16
+	b) Making Replication, B0 B0 B0, B1 B1 B1,.....B16 B16 B16.
+	c) Where to place those replication blocks.
+2.  After created meta data, Response sending to client API. Client API starts perform the response through pipeline. It will go to first slave machine and write what are blocks need to be written and then move to next block and do the same. 
+3. After written all blocks, giving an acknowledgment to Client API as Completed, then Client API will send response to Name node as Job completed.
+
+Read Operations:-
+================
+1. When Job is submitted to Job tracker, Job tracker will contact Name node for block details, Name node will search in meta data and give the response to Job tracker as Block details.
+2. Job tracker will split the job to multiple tasks, Assign the task to each Task tracker and Monitor those task trackers by heart beat. 
+3. Once task is received by Task tracker, Task tracker will launch the Map task based on Resource Availability. Task tracker is requesting data node for data. The time taken for taking the data is called as Look up time.
+4. Once Map task is completed, output will be written in temp folder of data node. After all map tasks are completed, Task tracker launch the Reduce task based on No of reducers quoted in Driver program.
+5. Output of reducer will be saved to local temp folder. After that result will be flushed to HDFS. and informed to Job tracker as Job completed.
+
+Deamon Process			Web UI Port
+===================================
+Name node				50070
+Data node				50075
+Job tracker				50030
+Task Tracker			50060
+Secondary Name node		50090
+
+Hadoop-1.2.1/conf	
+	
+File-Name				Deamon Configuration:-
+==============================================
+Core-site.xml			Where Name node is running
+mapred-site.xml			where Job Tracker is running
+hdfs-site.xml			Name node and data node dir
+hadoop-env.sh			Java Home path
+Masters					Secondary Name node Configuration
+Slaves					Data node
+
+Hadoop 1.0 --> Hadoop-1.2.1
+=============================
+Common Start 			- bin/start-all.sh
+1. Name node 			- bin/hadoop-daemon.sh start namenode
+2. Datanode 			- bin/hadoop-daemon.sh start datanode
+3. Job tracker 			- bin/hadoop-daemon.sh start job tracker
+4. Task Tracker 		- bin/hadoop-daemon.sh start tasktracker
+5. Secondary Name node  - bin/hadoop-daemon.sh start secondarynamenode
+6. Resource Manager     - bin/hadoop yarn-daemon.sh start resoucemanager
+7. Node manager         - bin/hadoop yarn-daemon.sh start nodemanager

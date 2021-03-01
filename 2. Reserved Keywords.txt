@@ -1,0 +1,54 @@
+if 
+elif
+else
+
+for --> for(item in items):
+			print(item)
+
+try
+except
+raise
+finally 
+
+
+and 
+or
+not
+
+assert --> Used for debugging purpose, Instead of print statement, we can use assert statement.
+		--> assert b != 0, "B value should not be 0"
+		--> If B value is not 0 then program will continue, else program will stop and print the Error message.
+
+exec --> Dyanamic execution of Python code which can be String or Object.
+		--> prog = 'print("The sum of 5 and 10 is", (5+10))'
+		--> exec(prog)
+pass --> Null Statement, if you dont want to write any code, Just give pass.
+
+break 
+continue
+
+from
+import
+global
+
+import x ==> imports the module X and refer Method and Variable by x.variable and x.method
+
+from x import * ==> imports the module X and refer Method and Variable directly by name
+
+def
+return
+
+lambda function or Anonymous function ==> f = lambda x : x*x
+									  ==> print(f(5))
+									  ==> 25
+yield --> Store the results of the program and returns with out destroying States of local variables
+
+=======================
+
+from urllib import request
+# access request directly.
+mine = request()
+
+import urllib.request
+# used as urllib.request
+mine = urllib.request()

@@ -1,0 +1,32 @@
+Basic Performance Tunning:-
+=================================
+1. Kryo Serialization:-
+---------------------
+--> It is advised to use Kryo Serialization instead of Java Serialization for Spark application.  It will be very useful when you are Shuffling or Caching large amount of data.
+--> Its 10x faster than Java Serialization.
+
+val conf = new SparkConf().set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+
+2. It will be very good for application how much you can reduce shuffling, Use .repartition and .coalesce (to increase/decrease) parallelism
+
+3. Use cache or persist for fast processing,
+
+4. use Broadcast variables and Accumulators
+
+5. Use checkpointing for Spark Streaming applications
+
+6. Setting proper No of Executors, Executor core, Executor Memory, Driver memory
+
+7. Use reduceByKey instead of groupByKey to avoid unneccessary data transfer.
+
+Advanced performance Tunning:-
+===============================
+1. Dynamic Allocation set to true. --> Resources will be dynamically allocated. 
+2. Cost Based optimaization true --> Spark sql will determine the most optimaized execution plan for executing the query. 
+3. Speculative execution set to true. 
+4. Maintaining the No of the executors to be run Parallerly. 
+5. Maintaining the Executors to be involved for Shuffle partitions. 
+
+
+
+

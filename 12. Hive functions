@@ -1,0 +1,226 @@
+Hive Operators and User-Defined Functions (UDFs):-
+-------------------------------------------------
+Primitive data types:-
+---------------------
+Small int
+int
+bigint
+long
+varchar
+String
+double
+decimal(38,12)
+boolean
+Date --> used for access YYYY-MM-dd
+Timestamp --> YYYY-MM-dd hh:mm:ss
+
+
+Complex data types:-
+------------------
+array
+map
+struct
+
+Built in Functions:-
+-------------------
+Mathematical Functions:-
+------------------------
+1. round(double a) --> Returns the rounded BIGINT value of a
+2. floor(double a) --> Returns the maximum BIGINT value that is equal to or less than a.
+3. ceil(double a) --> Returns the minimum BIGINT value that is equal to or greater than a.
+4. pow(DOUBLE a, DOUBLE p) --> Returns a power of p.
+5. factorial(INT a) --> Returns the factorial of a
+
+Collection Functions:-
+---------------------
+1. size(Map<K.V>) --> Returns the number of elements in the map type.
+2. size(Array<T>) --> Returns the number of elements in the array type.
+3. map_keys(Map<K.V>) --> Returns an unordered array containing the keys of the input map.
+4. map_values(Map<K,V>) --> Returns an unordered array containing the values of the input map.
+5. array_contains(Array<T>, value) --> Returns TRUE if the array contains value.
+6. sort_array(Array<T>) --> Sorts the input array in ascending order according to the natural ordering of the array elements and returns it
+
+Type Conversion functions:-
+--------------------------
+1. cast(Age as int)
+
+Date Functions:-
+-------------
+1. from_unixtime()
+2. unix_timestamp() --> Get current timestamp of default time zone.
+3. unix_timestamp(string date) --> Converts into unix timestamp
+4. unix_timestamp(string date, string pattern) --> 
+   unix_timestamp('2017-10-01 11:20:01','YYYY-MM-dd') = 12624862849587
+5. to_date(string timestamp) --> return only date format (YYYY-MM-dd).
+6. year(string date) --> Return the Year
+7. month(string date) --> Return the month
+8. day(string date) , dayofmonth(string date) --> Return day of the date
+9. hour(string date) --> return the hour of the timestamp
+10. minute(string date) --> return the minute of the timestamp
+11. second(string date) --> return the second of the timestamp
+12. weekofyear(string date) --> Return the week number of the year
+13. datediff(string enddate, string startdate) --> Return the difference date
+14. date_add(string date,int days) --> Return the date.
+15. date_sub(string date,int days) --> Return the date
+16. current_date() -->
+17. current_timestamp() -->
+18. last_day(string date) --> Return the -last day of the month
+19. next_day(string start_date,string day_of_week)
+20. trunc(string date,string format) --> Returns the date truncated to the unit specified by the format. format Month/MON/MM, Year/YYYY/YY
+21. months_between(string date1,string date2) --> 
+22. date_format(string date, string format) --> date_format('2017-10-01 10:20:34','MM') --> 10
+
+Examples:-
+
+1. select unix_timestamp('2017-10-01','yyyy-MM-dd');
+
+2. select from_unixtime(1433930400,'dd-MM-yyyy'); --> 01-10-2017
+
+3. select to_date('2017-10-01 10:00:45'); --> 2017-10-01
+
+4. select year('2017-10-01 10:00:45')  --> 2017-10-01
+
+5. select month('2017-10-01 10:00:45') --> 10
+
+6. select day('2017-10-01 10:00:45') --> 01
+
+7. select hour('2017-10-01 10:00:45') --> 10
+
+8. select minute('2017-10-01 10:00:45') --> 00
+
+9. select second('2017-10-01 10:00:45') --> 45
+
+10. select weekofyear('1970-11-01 00:00:00') --> 44
+
+11. datediff(string enddate, string startdate) --> select datediff(‘2009-03-01’, ‘2009-02-27’) = 2
+
+12. date_add(date/timestamp/string startdate, tinyint/smallint/int days)  --> select date_add('2017-01-01', 2) --> 2017-01-03
+
+13. date_sub(date/timestamp/string startdate, tinyint/smallint/int days) --> select date_sub('2017-01-05', 2) --> 2017-01-03
+
+14. from_utc_timestamp({any primitive type}*, string timezone)
+
+15. to_utc_timestamp({any primitive type}*, string timezone) -->
+
+16. select current_date() --> 2017-01-10
+
+17. select current_timestamp() --> 2017-01-10 10:35:45.399
+
+18. select add_months('2017-01-02', 2) --> 2017-03-02
+
+19. select last_day('2017-02-20') --> '2017-02-28'  --> Gives last day of the month
+
+20. select next_day('2017-02-20','Tuesday') --> 2017-02-21
+
+21. select trunc('2017-03-15', 'MM') --> 2017-03-01
+    select trunc('2017-03-15', 'YYYY') --> 2017-01-01
+	
+22.  months_between(date1, date2) --> select months_between('2017-03-24','2017-01-04') --> 3.34344
+                                      select round(months_between('2017-03-24','2017-01-04')) --> 3.0
+									  
+23. select date_format('2017-01-03','yyyy') --> 2017
+    date_format('2017-01-03','MM') --> 01
+
+String Functions:-
+-------------------
+1. CONCAT( string str1, string str2... ) --> The CONCAT function concatenates all the stings.
+   Example: CONCAT('hadoop','-','hive') returns 'hadoop-hive'
+   
+2. LENGTH( string str ) --> Return
+   Example: LENGTH('hive') returns 4
+   
+3. LOWER( string str ),  LCASE( string str ) --> The LOWER or LCASE function converts the string into lower case letters.
+   Example: LOWER('HiVe') returns 'hive'
+   
+4. LPAD( string str, int len, string pad ) --> The LPAD function returns the string with a length of len characters left-padded with pad.
+   Example: LPAD('hive',6,'v') returns 'vvhive'
+  
+5. LTRIM( string str )  --> The LTRIM function removes all the trailing spaces from the string.
+   Example: LTRIM('   hive') returns 'hive'
+   
+6. REPEAT( string str, int n ) --> The REPEAT function repeats the specified string n times.
+   Example: REPEAT('hive',2) returns 'hivehive'
+
+7. RPAD( string str, int len, string pad ) --> The RPAD function returns the string with a length of len characters right-padded with pad.
+   Example: RPAD('hive',6,'v') returns 'hivevv'
+   
+8. REVERSE( string str ) --> The REVERSE function gives the reversed string
+   Example: REVERSE('hive') returns 'evih'
+   
+9. RTRIM( string str ) --> The RTRIM function removes all the leading spaces from the string.
+   Example: LTRIM('hive   ') returns 'hive'
+   
+10. SPACE( int number_of_spaces ) --> The SPACE function returns the specified number of spaces.
+    Example: SPACE(4) returns '    '
+
+11. SPLIT( string str, string pat )  --> It splits the string around the pattern pat and returns an array of strings. 
+    Example: SPLIT('hive:hadoop',':') returns ["hive","hadoop"]
+
+12. SUBSTR( string source_str, int start_position [,int length]  ),  
+    SUBSTRING( string source_str, int start_position [,int length]  ) 	
+	Example1: SUBSTR('hadoop',4) returns 'oop'
+    Example2: SUBSTR('hadoop',4,2) returns 'oo'
+
+13. TRIM( string str )  --> The TRIM function removes both the trailing and leading spaces from the string.
+    Example: TRIM('   hive   ') returns 'hive'
+	
+14. UPPER( string str ), UCASE( string str )
+    Example: UPPER('HiVe') returns 'HIVE'
+	
+
+Built-in Aggregate Functions (UDAF):-
+--------------------------------------
+1. Count() 
+   count(*) - Returns the total number of retrieved rows, including rows containing NULL values.
+
+   count(expr) - Returns the number of rows for which the supplied expression is non-NULL.
+
+   count(DISTINCT expr[, expr]) - Returns the number of rows for which the supplied expression(s) are unique and non-NULL. Execution of this can be optimized with hive.optimize.distinct.rewrite.
+   
+2. sum()
+   sum(col), 
+   sum(DISTINCT col)
+
+   Returns the sum of the elements in the group or the sum of the distinct values of the column in the group.
+   
+3. Avg:-
+   avg(col), 
+   avg(DISTINCT col)
+   
+4. min(col)
+
+Returns the minimum of the column in the group.
+
+5. max(col)
+
+Returns the maximum value of the column in the group.
+
+Built-in Table-Generating Functions (UDTF):-
+--------------------------------------------
+1. explode(ARRAY<T> a) --> Explodes an array to multiple rows. Returns a row-set with a single column (col), one row for each element from the array.
+
+
+    
+
+
+
+hive> select * from Tri100;
+1       rahul   Hyderabad       30000     40000
+2       Mohit   Banglore        22000     25000
+3       Rohan   Banglore        33000     40000
+4       Ajay    Bangladesh      40000     45000
+5       srujay  Srilanka        25000     30000
+
+1. concat(String A,String B,String C) --> concatenated value
+
+
+hive> select CONCAT(name,' ','Got Hike of',' ',Hike,' ','from',' ',sal) from Tri100;
+rahul Got Hike of 40000 from 30000
+Mohit Got Hike of 25000 from 22000
+Rohan Got Hike of 40000 from 33000
+Ajay Got Hike of 45000 from 40000
+srujay Got Hike of 30000 from 25000
+
+2. initcap(String A) --> Return First letter of each word is in CAPS and all other letters are lowercase.
+3. length(String A) --> Rteurns length of the String
+4. locate(string A,)

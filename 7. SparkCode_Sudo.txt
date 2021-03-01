@@ -1,0 +1,58 @@
+csv file
+text file
+Json file
+parquet
+ORC file
+Avro file
+RDBMS
+Hive Tables
+
+Generic Load Functions:-
+========================
+val df = spark.read.load("examples/src/main/resources/users.parquet")
+usersDF.select("name", "favorite_color").write.save("namesAndFavColors.parquet")
+
+Manually Specifying options:-
+==========================
+val peopleDF = spark.read.format("json").load("examples/src/main/resources/people.json")
+peopleDF.select("name", "age").write.format("parquet").save("namesAndAges.parquet")
+
+val peopleDFCsv = spark.read.format("csv")
+  .option("sep", ";")
+  .option("inferSchema", "true")
+  .option("header", "true")
+  .load("examples/src/main/resources/people.csv")
+
+usersDF.write.format("orc")
+  .option("orc.bloom.filter.columns", "favorite_color")
+  .option("orc.dictionary.key.threshold", "1.0")
+  .option("orc.column.encoding.direct", "name")
+  .save("users_with_options.orc")
+
+val peopleDF = spark.read.json("examples/src/main/resources/people.json")
+
+val parquetFileDF = spark.read.parquet("people.parquet")
+
+Saving to Persistent Tables:-
+============================
+DataFrames can also be saved as persistent tables into Hive metastore using the saveAsTable command.
+
+df.write.option("path", "/some/path").saveAsTable("t")
+
+Bucketing, Sorting and Partitioning:-
+======================================
+// Turn on flag for Hive Dynamic Partitioning
+spark.sqlContext.setConf("hive.exec.dynamic.partition", "true")
+spark.sqlContext.setConf("hive.exec.dynamic.partition.mode", "nonstrict")
+
+usersDF.write.partitionBy("favorite_color").format("parquet").save("namesPartByColor.parquet")
+
+peopleDF.write.bucketBy(42, "name").sortBy("age").saveAsTable("people_bucketed")
+
+usersDF
+  .write
+  .partitionBy("favorite_color")
+  .bucketBy(42, "name")
+  .saveAsTable("users_partitioned_bucketed")
+
+

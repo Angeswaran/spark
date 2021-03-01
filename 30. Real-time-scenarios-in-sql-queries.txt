@@ -1,0 +1,87 @@
+1. What is Query to find highest salary?
+
+select name, max(salary) from employee
+
+2. What is Query to find Second highest salary for employee?
+
+select name, max(salary) from employee where salary < (select max(salary) from employee)
+
+(or)
+
+select name from (select *, dense_rank() over(order by salary desc) as row_num from employee) tbl1
+where tbl1.row_num=2;
+
+Scenario 2 : Fetching Nth Record from the table.:-
+===================================================
+1. Query to find First Record from the table.?
+
+Select * from Employee where Rownum =1;
+
+2. Query to find last Record from the table.?
+
+select * from employee where row_id = (select max(row_id) from employee)
+
+3. Query to find Nth Record from the table.
+
+select * from 
+(select *,row_number() over(partitioned by eid order by eid desc) as row_num from employee)
+where row_num=23;
+
+(or)
+
+select top 1 * from (select top 23 * from employee order by eid desc) tbl1;
+
+Scenario 3 : Find and delete duplicate rows:-
+==============================================
+1. Query to find duplicate rows.?
+
+select id,name, count(*) from employee group by id,name having count(*) > 1;
+
+2. Query to delete duplicate rows
+
+
+
+Scenario 4: How to create a table which has same structure  or how to create duplicate table.:
+===============================================================================================
+1: Create the duplicate table with data
+
+create table employee_1 as select * from employee;
+
+2. Create the table structure duplicate to another table.
+
+create table employee_1 as select * from employee where 1=2;
+
+Scenario 5: Scenario of Self Join:-
+===================================
+1. The query to find out the manager of employee
+
+select a.emp_name,b.emp_name from employee a join employee b on a.emp_id = b.manager_id;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

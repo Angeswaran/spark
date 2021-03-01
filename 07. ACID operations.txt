@@ -1,0 +1,45 @@
+ACID:- Atomicity, Consistency, Isolation, Durability
+
+Initially, Hive did not support Update tables. Version 0.14 onwards, Hive supports ACID transactions.
+
+Using ACID, You can delete and Update the hive Tables.
+
+Basically Hive is Not supported for OLTP process, It is designed for Support OLAP process, 
+
+If you have requirement to update Hive table records, then Hive provides ACID transactions. 
+This feature is available in Hive 0.14 and above. You must create table by setting up TBLPROPERTIES to use transactions on the tables.
+
+CREATE TABLE hive_acid_demo (key int, value int)
+CLUSTERED BY(key) INTO 3 BUCKETS
+STORED AS ORC
+TBLPROPERTIES ('transactional'='true');
+
+Note that, You must declare the table as Bucketed, you can't set the TBLPROPERTIES in Create Statement without Bucket.
+
+Enable ACID in Hive:-
+--------------------
+SET hive.support.concurrency=true;
+SET hive.txn.manager=org.apache.hadoop.hive.ql.lockmgr.DbTxnManager;
+SET hive.enforce.bucketing=true;
+SET hive.exec.dynamic.partition.mode=nonstrict;
+
+Here is an example that inserts some records, deletes one record and updates one record.
+
+INSERT INTO hive_acid_demo  VALUES (1, 1);
+INSERT INTO hive_acid_demo  VALUES (2, 2);
+INSERT INTO hive_acid_demo  VALUES (3, 3);
+INSERT INTO hive_acid_demo  VALUES (4, 4);
+Update Hive Table
+
+We have data in the table, let us run the update statement and verify the table again.
+
+UPDATE hive_acid_demo
+set value = 5
+where key = 4;
+Verify the updated table;
+
+hive> select * from hive_acid_demo where key = 4;
+OK
+4       5
+Time taken: 0.287 seconds, Fetched: 1 row(s)
+

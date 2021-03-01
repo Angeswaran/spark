@@ -1,0 +1,11 @@
+Order By 			--> Total Ordering is guaranteed. It will group the data based on Columns mentioned in Order by and Making order them as Ascending or Decending.
+
+Group By 			--> It will group the data based on Columns mentioned in Group by and display the aggregation result.
+
+Sort By 			--> It will sort the data before feeding the data into Reducer. It will sort the data based on columns mentioned in sort by.
+
+Distribute By		 --> Distribute the Rows among Multiple Reducers based on column mentioned in the Distribute by. All Distribute by columns will go same reducers.
+					 --> It does not sort the output in each Reducer.
+
+Cluster by			 --> Combination of Distribute by + Sort By 
+					 --> It will sort the data before feeding into Reducer and distribute rows among Multiple Reducers.

@@ -1,0 +1,79 @@
+Python is a High level, Interpreted object oriented programing language. 
+
+Printing the message --> >>> print "Hello, Python!"
+
+Execution --> $ python test.py
+
+==> Lines and Indentation:- 
+
+if True:
+   print "True"
+else:
+   print "False"
+
+==> Multi-Line Statements
+
+total = item_one + \
+        item_two + \
+        item_three
+
+==> Quotation in Python
+
+Single quote (''), double quote (" ") and trible quote ('''    ''')
+
+==> Comments in Python
+# Single commennt
+'''   '''  ==> Multi line command
+
+==> Assigning Values to Variables
+a = 10
+
+==> Multiple Assignment
+a = b = c = 10
+
+==> Standard Data Types
+Numbers
+String
+List
+Tuple
+Dictionary
+
+str = 'Hello World!'
+
+print str          # Prints complete string
+print str[0]       # Prints first character of the string
+print str[2:5]     # Prints characters starting from 3rd to 5th
+print str[2:]      # Prints string starting from 3rd character
+print str * 2      # Prints string two times
+print str + "TEST" # Prints concatenated string
+
+==> List --> Collection of data which is used to store hetro genious data.
+		 ==> Can able to change the value.
+		 ==> ['abcd', 786, 2.23, 'john', 70.2]
+
+==> Tuple --> Similar to list Collection of data which is used to store hetro genious data.
+		  ==> Can able to change the value.
+		  ==> tuple = ( 'abcd', 786 , 2.23, 'john', 70.2  )
+
+==> Dictionary --> Collection of data which is used to store the values in Key-value pairs.
+			   ==> dict = {}
+			   ==> dict = {'name': 'john','code':6734, 'dept': 'sales'}
+
+==> Data Type Conversion
+print(int(x))
+print(str(x))
+print(eval(x))
+print(list(x))
+print(tuple(x))
+
+==> If Loop --> if(	x > 0):
+					print("x is greater than 0")
+				elif(x == 0):
+					print("x is equal to 0")
+				else:
+					print("unknown value")
+
+==> for loop ==> for(i in list):
+					print(i)
+
+==> 

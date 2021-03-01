@@ -1,0 +1,539 @@
+﻿Tables:
+======
+1. Internal table
+2. External table
+3. Partitioned Table
+4. Bucketed Table
+5. Sorted Bucketed table
+6. Skewed table
+7. Temporary Tables
+
+a) Create Table As Select (CTAS)
+b) Create Table Like 
+
+-- How to execute Hql ---------
+
+bin/hive -f /home/datadotz/FirstScript.hql;
+
+--- Database-----
+
+Create Database:
+----------------
+
+CREATE DATABASE IF NOT EXISTS test_db
+	COMMENT "Test Database created for tutorial"
+	LOCATION '/Angesh/Hive/PMS'
+	WITH DBPROPERTIES(
+		'Date' = '2014-12-03',
+		'Creator' = 'Bala G',
+		'Email' = 'bala@somewhere.com'
+		);
+
+Create database if not exists PMS comment 'This is my first Db' location '/Angesh/Hive/PMS' with dbproperties ('CreatorName' = 'Angesh', 'Purpose' = 'Development');
+
+Show Database:
+---------------
+hive> show databases;
+OK
+default
+test_db
+test_db2
+Time taken: 0.072 seconds, Fetched: 3 row(s)
+hive> SHOW DATABASES LIKE '*db*';
+OK
+test_db
+test_db2
+Time taken: 0.014 seconds, Fetched: 2 row(s)
+hive> 
+
+Describe Databases:
+-----------------
+hive> DESCRIBE DATABASE test_db;          
+OK
+test_db	Test Database created for tutorial	hdfs://localhost:9000/user/hive/test_db	user	USER	
+Time taken: 0.016 seconds, Fetched: 1 row(s)
+hive> DESCRIBE DATABASE EXTENDED test_db;
+OK
+test_db	Test Database created for tutorial	hdfs://localhost:9000/user/hive/test_db	user	USER	{Email=bala@somewhere.com, Date=2014-12-03, Creator=Bala G}
+Time taken: 0.008 seconds, Fetched: 1 row(s)
+hive> DESC DATABASE test_db2;
+OK
+test_db2		hdfs://localhost:9000/user/hive/warehouse/test_db2.db	user	USER	
+Time taken: 0.019 seconds, Fetched: 1 row(s)
+
+Alter Databases:-
+----------------
+ALTER DATABASE DB_NAME SET DBPROPERTIES (property_name=property_value, ...); 
+ALTER DATABASE DB_NAME SET OWNER [USER|ROLE] user_or_role;
+ALTER DATABASE DB_NAME SET LOCATION hdfs_path;
+
+To know the current database:
+----------------------------
+hive> set hive.cli.print.current.db=true;
+hive (test_db)> SHOW SCHEMAS;
+OK
+default
+test_db
+Time taken: 0.523 seconds, Fetched: 2 row(s)
+hive (test_db)> USE default;
+OK
+Time taken: 0.069 seconds
+hive (default)> 
+
+
+Note: - If you had SET any property for current session like "set hive.cli.print.current.db=true", It will be applicable for only that session, If you had set to .hiverc file, then if will be applicable when ever you are opening hive session, it will be loaded. 
+--> The file is loaded from the hive conf directory
+
+Drop Databases:-
+---------------
+
+drop database if exists test restrict -->  it will not allow database to be dropped until all the tables inside it are dropped.
+
+drop database if exists test cascade --> It will drop all the tables belongs to the database first and finally remove the database.
+
+drop table if exists test1 purge --> when you are dropping, it will not go to ./trash directory, you will lost the data if you mistakenly dropped it.
+
+By default, Hive doesn’t allow us to drop databases that contain at least one or more tables. In this case, we need to either drop the tables first and then drop database or we need to provide CASCADE argument to DROP command.
+
+When a database is dropped, its directory is also deleted
+
+=======
+Tables:
+=======
+Internal table:
+==================
+1. Internal tables are Managed tables which means its managing by Hive.
+2. In Internal table, Both Meta data and Actual data will be bounded each other. Thats why when you are dropping the internal tables, both schema and data will be dropped.
+
+Create Table:
+------------
+Create table if not exists patient(pid int,pname string,drug string,gender string,Amount int) comment 'This is my first table' row format delimited fields terminated by ',' stored as textfile location '/Angesh/hive/PMS/patient' tblproperties('creatorname' = 'Jamuna');
+
+bin/hadoop dfs -rmr '/Angesh/hive/PMS/patient'  -- deleted HDFS directory
+
+Loading data from Local:
+------------------------
+load data local inpath '/home/datadotz/datagen_10.txt' into table patient; -- Created new directory in the name of patient and loaded the data.
+
+Loading data from HDFS:
+-----------------------
+load data inpath '/data10' into table patient; -- Created new directory in the name of patient and loaded the data.
+
+Store table data to local directory:
+------------------------------------
+Insert overwrite local directory '/home/datadotz/2016-06-04' select * from patient;
+
+Store table data to HDFS:
+-------------------------
+Insert overwrite directory '/Data/2016-06-04' select * from patient;
+
+Inserting data from One Table to Another Table:
+----------------------------------------------
+Insert into table drug_new select * from patient4;
+
+Insert overwrite table drug_new select * from patient4;
+
+Droping Table:
+-------------
+Drop table IF EXISTS patient4; -- Actual data and meta data is deleletd
+
+2. External table:
+==================
+1. External Tables are not managed tables which means it does not managed by Hive.
+2. Meta data and Actual data will not be bounded each other. So when you are dropping the tables, Schema only dropped, Data will be remains there.
+
+Create Table:
+------------
+Create external table if not exists patient5(pid int,pname string,drug string,gender string,Amount int) comment 'This is my first table' row format delimited fields terminated by ',' stored as textfile location '/Angesh/hive/PMS/patient5' tblproperties('creatorname' = 'Jamuna');
+
+bin/hadoop dfs -rmr '/Angesh/hive/PMS/patient'  -- deleted HDFS directory
+
+Loading data from Local:
+------------------------
+load data local inpath '/home/datadotz/datagen_10.txt' into table patient; -- Created new directory in the name of patient and loaded the data.
+
+load data local inpath '/home/datadotz/datagen_10.txt' into table patient5;  -- Adding data to patient5
+
+Loading data from HDFS:
+-----------------------
+load data inpath '/data10' into table patient5;  -- Adding data to patient5
+
+Select count(*) from patient5; -- Result is 22 (With null Value)
+
+Select count(drug) from patient5; -- result is 20 (With out null value)
+
+Store table data to local directory:
+------------------------------------
+Insert overwrite local directory '/home/datadotz/2016-06-04' select * from patient;
+
+Store table data to HDFS:
+-------------------------
+Insert overwrite directory '/home/datadotz/2016-06-04' select * from patient;
+
+Inserting data from One Table to Another Table:
+-----------------------------------------------
+Insert overwrite table Patient2 select * from patient;
+
+Insert into table drug_new select * from patient4;
+
+Droping Table:
+-------------
+Drop table if exits patient5; -- meta data is only deleted, actual data is not deleted
+
+After load data from Sqoop, Just Craete a Table and Map the data:
+-----------------------------------------------------------------
+Create external table if not exists patient5(pid int,pname string,drug string,gender string,Amount int) comment 'This is my first table' row format delimited fields terminated by ',' stored as textfile location '/Angesh/hive/PMS/patient5' tblproperties('creatorname' = 'Jamuna');
+
+Select * from patient5; -- It retrives the data. No need to load again.
+
+Difference between Internal and External Tables:-
+--------------------------------------------------
+Internal                                                                                      External
+--------                                                                                      --------
+1. when you are creating Internal table, schema is stored in metastore and                    1. when you are creating External table, schema is stored in metastore and 
+data is stored in hive warehouse path, here both schema and data are bound each other.        data is stored in mentioned location path, here both schema and data are not bound each other. 
+So when you are droping a table, both schema and data will be lost.                           So when you are droping a table, Schema only will be delted and data remains there.
+(hive.metastore.warehouse.dir)
+2. We can create table based on existing table (AS SELECT). CTAS                              2. We are not creating table based on existing table (AS SELECT).
+
+
+Use INTERNAL tables when:
+1. when your data is temporary.
+2. When you want Hive to completely manage the life-cycle of the table and data.
+
+Use EXTERNAL tables when:
+1. when you want your data to be used outside of Hive. For example, the data files are read and processed by an existing program that doesn’t lock the files.
+2. If you need your Data to be remains in the underlying location even after a DROP TABLE. 
+3. Hive should not own data and control settings, directories, etc., you may have another program or process that will do those things.
+4. we are not creating table based on existing table (AS SELECT).
+
+Alter Queries:
+-------------
+ALTER TABLE TABLE_NAME RENAME TO NEW_TABLE_NAME
+
+ALTER TABLE name RENAME TO new_name
+ALTER TABLE name ADD COLUMNS (col_spec[, col_spec ...])
+ALTER TABLE name DROP [COLUMN] column_name
+ALTER TABLE name CHANGE column_name new_name new_type
+ALTER TABLE name REPLACE COLUMNS (name string, dept string);
+
+Insert <New Table> Select <selective columns> from <Old Table> 
+
+Partitioned table:
+==================
+1. Way of segregating a table into multiple files/directories based on partitioned columns defined into table definition.
+2. Partiting gives effetive results when,
+	a) limited number of partition and Equal sized Partition	
+
+Types of Partition:
+-------------------
+1. Static Partition
+2. Dynamic Partition
+
+Static Partition:
+----------------
+Other way:-
+----------
+--> We have to give the partition name during the Insert, It will not take it as dynamically.
+--> No need to give partition column name in the Select list.
+
+Create Table:
+-------------	
+Create table patient6(pid int,pname string,drug string,gender string,Amount int) partitioned by (country string) row format delimited fields terminated by ',' 
+stored as textfile location '/Angesh/hive/PMS/patient6' tblproperties('Authorname' = 'Jami');
+
+Loading data from Local:
+------------------------
+Load data local inpath '/home/datadotz/datagen_10' overwrite into table Patient Partition(date1='2016-06-04')
+
+Loading data from HDFS:
+-----------------------
+Load data inpath '/data10' overwrite into table Patient Partition(date1='2016-06-04')
+	
+-----------------------------------------------------
+ALTER PARTITIONS: (Add, Rename, Exchange, Drop, MSCK)
+-----------------------------------------------------
+Alter table patient6 add partition (date1 string) location '/Angesh/hive/PMS/patient6';
+
+ALTER TABLE TABLE_NAME PARTITION (DATE='2017-01-12') RENAME TO PARTITION (DATE='2017-01-13');
+
+-- move partition from one table to another table
+ALTER TABLE TABLE_NAME_1 EXCHANGE PARTITION (DATE='2017-01-12') WITH TABLE TABLE_NAME_2;
+
+-- Recover Partitions
+MSCK REPAIR TABLE TABLE_NAME;
+
+-- Delete Partitions
+ALTER TABLE TABLE_NAME DROP PARTITION (DATE='2014-12-03');
+
+-- For tables that are protected by NO_DROP CASCADE, you can use the predicate IGNORE PROTECTION to drop a specified partition
+ALTER TABLE table_name DROP [IF EXISTS] PARTITION partition_spec IGNORE PROTECTION;
+
+-- The PURGE option is added to ALTER TABLE in version 1.2.1, If PURGE is specified, the partition data does not go to the .Trash/Current directory and so cannot be retrieved in the event of a mistaken DROP:
+ALTER TABLE table_name DROP [IF EXISTS] PARTITION partition_spec PURGE;
+
+-- (Un)Archive Partition
+ALTER TABLE TABLE_NAME ARCHIVE PARTITION (DATE='2017-01-12');
+ALTER TABLE TABLE_NAME UNARCHIVE PARTITION (DATE='2017-01-12');
+
+-- Alter Table/Partition File Format
+ALTER TABLE TABLE_NAME PARTITION (DATE='2016-06-04') SET FILEFORMAT ORC;  --> The operation only changes the table metadata. Any conversion of existing data must be done outside of Hive.
+
+-- Alter Table/Partition Location
+ALTER TABLE TABLE_NAME PARTITION (DATE='2016-06-04') SET LOCATION 'new location';
+
+-- Alter Table/Partition Touch
+ALTER TABLE table_name TOUCH [PARTITION partition_spec]; --> ??
+
+-- Alter Table/Partition Protections
+ALTER TABLE table_name [PARTITION partition_spec] ENABLE|DISABLE NO_DROP [CASCADE];
+ 
+ALTER TABLE table_name [PARTITION partition_spec] ENABLE|DISABLE OFFLINE; --> ??
+
+https://cwiki.apache.org/confluence/display/Hive/LanguageManual+DDL#LanguageManualDDL-AlterPartition
+
+-- Alter Table/Partition Concatenate
+ALTER TABLE table_name [PARTITION (partition_key = 'partition_value' [, ...])] CONCATENATE;
+
+If the table or partition contains many small RCFiles or ORC files, then the above command will merge them into larger files. In case of RCFile the merge happens at block level whereas for ORC files the merge happens at stripe level thereby avoiding the overhead of decompressing and decoding the data.
+
+
+Store table data to local directory:
+-----------------------------------
+Insert overwrite local directory '/home/hive/Partition' select * from patient;
+
+Store table data to HDFS:
+-------------------------
+Insert overwrite directory '/hdfs/hive/Partition' select * from patient;
+
+Inserting data from One Table to Another Table:
+-----------------------------------------------
+Insert overwrite Table Patient1 Select * from Patient;
+
+Droping Table:
+--------------
+Drop Table Patient;
+
+Error Faced:
+------------
+load data local inpath '/home/datadotz/datagen_10.txt' into table patient6; -- Need to specify partitioned column
+		
+load data local inpath '/home/datadotz/datagen_10.txt' into table patient6 partition (Country='US') location '/Angesh/hive/PMS/patient6/US'  
+-- Creates country folder and put patient data.
+
+Dynamic Partition:
+==================
+Other way:-
+---------
+--> We don't have to give the partition name during the Insert, It will take it from the data dynamically.
+--> We should give the partition column as a last column in the Select list. 
+
+Properties Need to Set:
+----------------------
+SET hive.exec.dynamic.partition = true;  										--> Set to True to Enable Dynamic partitions
+SET hive.exec.dynamic.partition.mode = nonstrict; 								--> Set to Non-Strict to Enable all partitions to be determined dynamically
+Set hive.exec.max.dynamic.partitions = 1002; (default value being 1,000) 		--> Total Number of partitions that can be created by one statement with Dynamic partitions, 
+																					Raise the Fatal Error If limit is crossed. 
+Set hive.exec.max.dynamic.partitions.pernode = 102; (default value being 100) 	--> Maximum number of partitions that can be created by Mapper/Reducer, 
+																					Raise the Fatal Error If the limit exceeded. 
+Set hive.exec.max.created.files = 100002; (default value being 1,00,000) 		--> Maximum Number of files that can be created globally. Raise the Fatal Error If the limit exceeded.
+
+Difference between Strict And Non-Strict:-
+--------------------------------------------
+1. Strict does not allow all partition to be load data dynamic. But Non-Strict mode will allow all partition to load dynamically.
+
+Reference:
+----------
+https://www.altiscale.com/blog/best-practices-for-dynamic-partitioning-in-hive/
+
+Create Table:
+------------
+Create table patient8(pid int,pname string,gender string,Amount int) partitioned by (drug string) row format delimited fields terminated by ',' 
+stored as textfile location '/Angesh/hive/PMS/patient8' 
+
+Add Partition After create Partitioned Table:
+---------------------------------------------
+Alter table patient6 add partition (date1 string) location '/Angesh/hive/PMS/patient6';
+
+Loading data from Local:
+------------------------
+	We can not load data to Dynamic partition table directly. We should load it from another table,
+
+Load data local inpath '/data10' overwrite into table Patient	
+	
+INSERT OVERWRITE INTO TABLE patents PARTITION (drug) Select * from Patient;
+
+Loading data from HDFS:
+-----------------------
+Load data inpath '/data10' overwrite into table Patient Partition(date1='2016-06-04')
+
+INSERT OVERWRITE INTO TABLE patents PARTITION (drug) Select * from Patient;
+
+Store table data to local directory:
+-----------------------------------
+Insert overwrite local directory '/home/hive/Partition' select * from patient;
+
+Store table data to HDFS:
+-------------------------
+Insert overwrite directory '/hdfs/hive/Partition' select * from patient;
+
+Inserting data from One Table to Another Table:
+-----------------------------------------------
+Insert overwrite Table Patient1 Select * from Patient;
+
+Droping Table:
+--------------
+Drop Table Patient;
+
+If Partitions are loaded from Sqoop externally and Those partitions are not added in Hive then It will loaded that data. If we want to add those data, We have to manually add the partition to the Hive table by,
+
+Alter table Patient add partition (Country = "AUS");
+
+If you have a lot of partitions to be added like this, Then you will go like,
+
+MSCK Repair table Patient;
+
+It will Sync all the partitions with Hive table.
+
+Rename Partition:
+----------------
+Alter table Patient Partition (Country = 'USA') rename to partition (Country = 'US')
+
+Exchange Partition:
+-------------------
+Alter table Patient Partition (Country = 'UK') with table Patient1;
+
+Drop Partition:
+---------------
+Alter table Patient Drop partition (Country = 'UK');
+
+Static partition vs Dynamic Partitions:
+=======================================
+Static Partition																Dynamic partition
+
+1. Need to give partition value in the Insert statement,     					No need to give partition value in the Insert statement, 
+2. No need to give Partition column name in the last column of Select list     	Need to give Partition column name in the last column of Select list
+3. Writing process is faster, Reading process is slow.						 	Writing process is Slower, Reading process is faster
+4. Static Partition is Strict Mode					 							Dynamic Partition is Non-Strict Mode
+
+Bucketing Table:
+===============
+1. Another way of segregating a table into multiple files/directories based on Hashing function of the bucketed column mod No of buckets.
+2. Records with Same Hash value will get stored in same bucket.
+3. We use Clustered by clause to divide a table into Buckets.
+4. Bucketing can be done along with Partitioning Table or without Partition.
+
+Limitation of Bucketing:
+------------------------
+1. Specifying Bucketing doesnot ensure that table is properly populated. data loading into buckets need to be handled by ourself.
+	
+Reference:
+---------
+http://hadooptutorial.info/bucketing-in-hive/
+	
+Create Table:
+------------
+create table Patient_Bucketing(pid int,pname string,gender string,Amount int)    clustered by(pid) into 4 buckets;
+
+Load data to Bucketed Table:
+----------------------------
+Similar to Partitioned Table, We can not directly load data to Bucketed Table, 
+
+Set hive.enforce.bucketing = true;
+
+Insert OVERWRITE Table Patient Partition (Country = 'IND') Select * from Patient1;
+
+Notes:
+-----
+1. It will automatically sets Number of Reduce Tasks to be equal to No of Buckets mentioned in Table definition.
+
+Table Sampling in Hive;
+----------------------
+	Table Sampling is nothing but Extracking of small data from Large data sets. Its like limit operator in Hive.
+	
+Difference Between LIMIT and TableSample in Hive:
+--------------------------------------------------
+1. Limit clause executes the entire query and returns limited records. But Sampling will only a select a portion of data to perform a query.
+
+Select pid,pname, drug from Patient TableSample(Bucket 8 out of 32 on State)
+
+Select pid,pname, drug from Patient1 Limit 10;
+
+We can perform Random Sampling With hive,
+
+Select pid,pname, drug from Patient TableSample(10 percent);
+
+How to decide no of Buckets in HIve:-
+======================================
+Lets take a scenario Where table size is: 2300 MB, HDFS Block Size: 128 MB
+
+Now, Divide 2300/128=17.96
+
+Now, remember number of bucket will always be in the power of 2.
+
+So we need to find n such that 2^n > 17.96
+
+n=5
+
+So, I am going to use number of buckets as 2^5=32
+
+Hope, It will help some of you.
+
+Partitioning VS Bucketing:
+==========================
+1. Segregation is done by column name, But in bucketing segregation is done by hash value.
+2. Partition is used for filtering like where condition, Bucketing is used for sampling.
+
+
+Sorted Bucketed Table:
+======================
+Create Table:
+------------
+create table Patient_Bucketing(pid int,pname string,gender string,Amount int) Partitioned by (drug string) clustered by(pid) Sorted by (Drug) into 32 buckets Stoted as Textfile;
+
+Load data to Bucketed Table:
+----------------------------
+Similar to Partitioned Table, We can not directly load data to Bucketed Table, 
+
+Set hive.enforce.bucketing = true;
+
+Insert OVERWRITE Table Patient Partition (Country = 'IND') Select * from Patient1;
+	
+
+Skewed table:
+=============
+Skewed Tables are special type of tables, where values that appear very often are split into separate files and other values are going to some other files. during the Skewed join, job will it. 
+
+Create table Patient(pid int,pname string,gender string,drug string,Amount int) skewed by(pid) on(12,13) Stored as Textfile Location '/data12';
+
+Load data to Skewed Table:
+--------------------------
+
+Turn Off Skew Concept:
+----------------------
+Alter Table Patient(pid int,pname string,gender string,drug string,Amount int) NOT Skewed;
+
+------View------
+
+Create view vw_Patient as Select * from Patient8;
+
+Alter view vw_Patient as Select * from patient8 where drug='avil';
+
+Drop view vw_Patient;
+
+--- How to pass parameter to the view ----
+
+Create view vw_Patient as Select * from patient where drug="${hiveconf:drug}";  -- Save it as hql file
+
+bin/hive -hiveconf drug='avil' -f test.hql
+
+bin/hive -hiveconf drug1='avil' -f vw_Patient.hql
+
+
+-- Index -----------
+
+Create index idx_PatientID on patient8(pid);
+
+Drop index idx_PatientID on patient8
+
+Alter index idx_PatientID on patient(partition country='US') rebuild;

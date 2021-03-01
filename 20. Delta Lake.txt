@@ -1,0 +1,14 @@
+Delta lake:-
+=========
+1. ACID Problem
+2. Missing Schema Enforcement (processing is good. while reading, thre is a issue - Expected Int, Found Double)
+3. Small files Problem --> Solution is Compaction 
+4. Partitioning --> 
+
+
+What is Delta lake:-
+======================
+1. 
+Delta lake allows you to validate the Schemas
+
+df.write.mode("overwrite").format("delta").save("1.csv")

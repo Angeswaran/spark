@@ -1,0 +1,59 @@
+HBA - HCP/HCI Behavioural Attributions
+
+1. This project has been done for the client of Abbvie. basically, This project is related to Data lake project which helps to get the data from Multiple Vendors. For Each vendors providing Multiple source files with file formats.
+The source of the data we are getting from vendor is different. Some vendor is saying that, data available in Teradata, these are the source tables, you can collect it. 
+Some vendors are saying that I will place the files in S3 FTP path, you can collect from there with different file formates like csv, txt, gz.
+Most of the vendors providing the data through S3 FTP path. 
+
+Project FLow:-
+==============
+1. The sources files are placed in S3 FTP path with Control file which contains List of the sources files, count of the records and size of the file.
+2. There is a wrapper script called as Vendor to S3 move.sh, This script will move the data from FTP to S3 landing path based on the file pattern. 
+2. Once the file is landed to S3 landing path, Basic Control file validation will be performed like Count of Records and Size of the file are Matching or Not.
+Once that validation is completed, The file will be copied to HDFS Landing path and the same file will be moved to S3 Archival. 
+3. once the file is placed in HDFS landing, Schema Validation framework will be get started which was developed by Spark Scala. 
+   Here, 
+   a) Schema Validations --> There was a Two schema files there for Each source file. One is Mater Schema and Incoming Schema.
+		Master Schema --> Schema which is there in the target table. 
+		Incoming Schema --> Schema which is present in the Incoming file.
+   b) During the Schema check, It will validate the Incoming Schema with Target schema and find the Mismatch. If thre is no Mismatch, Then Good to Go.
+	  Else, There is a Mismatch, then Framework will update the Master Schema about Missing OR Extra Columns. 
+   c) Then Framework will Insert the data into raw Layer (Direct dump)
+4. Once data is loaded to raw layer, DQM Framework will perform Cleansing Process.
+	a) Clensing Steps will be performed like NULL checks, Colum level checks and duplicate checks.
+    b) Once these cleansing process is completed, The data will be inserted to Refined layer with Few new columns, (DQM_Status)
+	c) Based on the result of the DQM process, dqm_Status column will be updated as Good_records OR Bad Records. 
+	d) Good records are only Consided for further process and Bad records will be eliminated. 
+5. Once data is loaded to refined Layer, SCD Process will get started. SCD framework will performing the SCD logic which was developed by Pyspark. History will be Maintained. 
+6. result of SCD framework, Data will be loaded to Work Layer tables.
+7. Once data is loaded to work layer, The datatype casting and dimension conformations will be performed on the Work layer table and create the view in the work layer. 
+8. One to One view will be created in FOundation Consumption layer on top of the Work layer table. 
+9. data will be collected from Multiple Foundation tables based on the Different Segments and Attributes which is configured in metadata file and Loaded to Consolidated layer. 
+10. Once data is loaded to Consolidated layer, DSL layout will be created as a View based on configurations Mapping and Export the data to Teradata as Downstream.
+
+=====================
+
+I have done the project HBA for the client of Abbvie. Abbvie is mainly focussing on producing drugs and Marketting to Healthcare professionals through Various channels like Rep, Webex, Email, Phone call, In-person. And also Abbvie producing the drugs in various therapertic Areas like immunology, oncology, neuro science virology and eye care etc. 
+Abbvie have tied up with various vendors like MEI, Allergan, METforce, Orilissa and HBA. Each vendors are providing the data in various datasources such as S3, Teradata, Oracle, No SQL, FTP Path with different file formats. We are creating the Different Pipelines for Pulling the data into the Datalake.
+What type of data we are receiving means, Rep will contact HCP to schedule the program and will send invite to Attendee and Speakers. It has various stages of the program like Stagging, RSVP Unmatched, RSVP and Attended. We are receiving the data about the speakers, Attendees, Program status, Presentation Materials and Events. 
+
+Let me go to the project flow, We are receiving the Raw files from the Vendors, Source files are placed in S3 FTP Path along with Controls files. Files are moved to S3 Landing based on the File patterens. Here we are performing Control file validations, result of the Control file validation is Success, file is copied to HDFS Landing path and file is moved to S3 Archival bucket. If the result is Failed, the Source file is moved to Reject bucket. 
+
+In the Success Scenrio, Schema level validation framework will be triggered. Here Performing the Schema validation, If any mismatch the Schema between Source and target, Framework will update Target Schema accordingly and data will be loaded to Raw layer. 
+
+On top of the Raw layer, DQM Validation framework will get triggered. Performing duplicates, NULL check and Column level check, adding dqm_status column and keeping the final status of dqm checks whether Its Passed or Failed. and Data will be stoted in the Refined layer. here we are Maintaining the History with Ingestion date time Partitions.
+
+Then, On Top of the refined layer, We are performing SCD Logic and result is stored to Work Layer. 
+
+On top of the Work layer, Datatype casting and dimension conformation will be performed. At the result the data is stored in the Foundation layer. 
+
+On top of the FOundation Layer, We are fetching the Segments and Attributes level data to Consolidated Layer and Exporting the data to the different Downstream sources. 
+
+and Downstream people will consume the data and generates the reports and Send to Client.
+
+=======================
+
+--> For Each Stages, we are having different frameworks which was developed by Spark Scala and PySpark. 
+--> For the Deployment Activity, we are using Azure CI-CD process to deployment the code to respective Environments like QA and Pre-Prod and Prod. 
+--> I have Involved in requirement gathing, Design, Pipeline creation, development and mentoring the team till Production deployment. 
+--> 

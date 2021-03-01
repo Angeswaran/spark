@@ -1,0 +1,197 @@
+Joins:
+======
+1. Left Outer join
+2. Right outer join
+3. Full outer join 
+4. Left semi join -> Can only return the columns from left side table where each record will be matched with right side table.
+
+Hive Joins:
+==========
+1. Shuffle Joins (Common Join)
+2. Map Join (Broadcast Join)
+3. Bucket Map join 
+4. Sort Merge Bucket(SMB) Map Join
+5. Skew join
+
+Shuffle Join: (Common Join)
+=============
+The shuffle join is the default option and it includes a map stage and a reduce stage.
+
+1. Mapper - Read data from table and join Key value pairs into an intermediate file.
+2. Shuffle - These pairs are sorted and merged
+3. Reducer - Gets the sorted data and does join
+
+Use-Case:
+---------
+1. It works for any Table size
+2. Especially when other join can not be used. for example full outer join
+
+Query:
+------
+Select a.* from a join b on a.id = b.id;
+
+select a.* from a,b where a.id = b.id;
+
+Map Join:
+=========
+1. If one or more tables are small enough fit into memory, The Mapper scans the large table and do join. 
+2. No shuffle and Reducer stage.
+
+Use Case:
+---------
+1. Small Table joins Big Table, It is very fast because It saves Shuffle and reduce stage.
+
+Cons:
+-----
+1. It requires at least one table is small enough 
+2. Right/Full outer join don't work.
+
+Example:
+---------
+Here passwords3 table is very small table while passwords table is huge.
+
+explain select a.* from passwords a,passwords3 b where a.col0=b.col0;
+
+Tips:
+----
+1. Auto Convert Shuffle Join to Map Join:
+
+3 Parameters related,
+
+SET hive.auto.convert.join = true;
+SET hive.auto.convert.join.noconditionaltask=true;
+SET hive.auto.convert.join.noconditionaltask.size = 10000000; (default - 10MB)
+
+2. Hint MAPJOIN Can be used to force to use map join:
+
+First Set the property to false;
+
+SET hive.ignore.mapjoin.hint = false;
+
+Example:
+Select /* + MAPJOIN(a) */ a.*   from Password a,Password1 b where a.id = b.id
+
+3. Bucket Map Join:
+==================
+Join is done in Mapper only. The Mapper process Bucket 1 from Table A only fetch Bucket 1 from Table B.
+Two tables should be Bucketed and 
+
+Example:
+-------
+Select /*+MAPJOIN*/ a.*,b.*,c.* from Password a join Password1 b on a.id = b.id
+join Password2 c on b.id = c.id
+
+Use-Case:
+---------
+When all tables are 
+1. Large
+2. Bucketed using the Join columns
+3. Number of Buckets in one table is a Multiple of Number of Buckets in another Table.
+4. Not sorted
+
+Cons:
+-----
+1. Tables need to be bucketed in the same way how the SQL joins. It can not be used for Other table.
+
+Tips:
+-----
+1. The tables need to be created bucketed on the same join columns and also data need to be bucketed when inserting.
+
+Example:
+---------
+create table b1(col0 string,col1 string,col2 string,col3 string,col4 string,col5 string,col6 string)
+clustered by (col0) into 32 buckets;
+create table b2(col0 string,col1 string,col2 string,col3 string,col4 string,col5 string,col6 string)
+clustered by (col0) into 8 buckets;
+
+set hive.enforce.bucketing = true; 
+
+From passwords insert OVERWRITE table b1 select * limit 10000;
+From passwords insert OVERWRITE table b2 select * limit 10000;
+
+2. hive.optimize.bucketmapjoin must to be set to true.
+
+SET hive.optimize.bucketmapjoin = true;
+
+Select /*+MAPJOIN*/ a.* from password a, Password1 b where a.id=b.id
+
+4. Sorted merge Bucket (SMB) Map Join:
+======================================
+Join is done in Mapper only. The corresponding buckets are joined with each other at the mapper.
+
+Use-Cases:
+----------
+When all tables are:
+a) Large.
+b) Bucketed using the join columns.
+c) All tables have the same number of buckets.
+d) Sorted using the join columns.
+
+Cons:
+Tables need to be bucketed in the same way how the SQL joins, so it cannot be used for other types of SQLs.
+Partition tables might slow down.
+
+Tips:
+----
+1. The tables need to be created bucketed and sorted on the same join columns and also data need to be bucketed when inserting.
+
+create table c1(col0 string,col1 string,col2 string,col3 string,col4 string,col5 string,col6 string)
+clustered by (col0) sorted by (col0) into 32 buckets;
+create table c2(col0 string,col1 string,col2 string,col3 string,col4 string,col5 string,col6 string)
+clustered by (col0) sorted by (col0) into 32 buckets;
+
+set hive.enforce.bucketing = true; 
+
+From passwords insert OVERWRITE  table c1 select *  order by col0;
+From passwords insert OVERWRITE  table c2 select *  order by col0;
+
+2. Below parameters need to set to convert SMB join to SMB map join.
+
+set hive.auto.convert.sortmerge.join=true;
+set hive.optimize.bucketmapjoin = true;
+set hive.optimize.bucketmapjoin.sortedmerge = true;
+set hive.auto.convert.sortmerge.join.noconditionaltask=true;
+
+3. Big table selection policy parameter "hive.auto.convert.sortmerge.join.bigtable.selection.policy" determines which table is for only streaming. 
+It has 3 values:
+org.apache.hadoop.hive.ql.optimizer.AvgPartitionSizeBasedBigTableSelectorForAutoSMJ (default)
+org.apache.hadoop.hive.ql.optimizer.LeftmostBigTableSelectorForAutoSMJ
+org.apache.hadoop.hive.ql.optimizer.TableSizeBasedBigTableSelectorForAutoSMJ
+
+4. Hint "MAPJOIN" can determine which table is small and should be loaded into memory.
+
+5. Small tables are read on demand which means not holding small tables in memory.
+
+6. Outer join is supported.
+
+Skew Joins:
+===========
+IF Table A joins B and A has Skew data "1" in joining column
+
+First read B and store the rows with the key 1 in in-memory hash table, Now run the set of mappers to read A and  do the following,
+
+1. If it has key 1, use the hashed version of B to compute the result.
+2. For all other keys, send it to reducer which do the join and Reducer will get the rows of B from mapper.
+
+This way, we end up reading only B twice. The skewed keys in A are only read and processed by the Mapper, and not sent to the reducer. The rest of the keys in A go through only a single Map/Reduce.
+The assumption is that B has few rows with keys which are skewed in A. So these rows can be loaded into the memory.
+
+Use-Case:
+---------
+1. One table has huge skew values on the joining column.
+
+Cons:
+-----
+One table is read twice.
+Users should be aware of the skew key.
+
+Tips:
+----
+1. Below parameter needs to be set to enable skew join.
+
+set hive.optimize.skewjoin=true;
+
+2. Below parameter determine if we get a skew key in join.
+
+If we see more than the specified number of rows with the same key in join operator, we think the key as a skew join key.
+set hive.skewjoin.key=100000;

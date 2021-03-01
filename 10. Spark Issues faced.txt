@@ -1,0 +1,26 @@
+1. Spark Memory Issue 
+	a) Driver Out of memory Issue --> 
+		1. Collect() operation when the files are very big, 
+		2. Broadcats join --> Broadcasting Small files into Big fils, If The file breaches the Meory Capacity
+	How to Resolve:-
+	================
+		Increasing the Driver meory or Increasing the Limit of Broadcasting Storage.
+
+	b) Executor Out of Memory Issue
+		1. YARN Memory overhead
+		2. High Concurrency
+		3. Big Partitions (Any one of the Machine is having a Big partitions, )
+
+2. Compile time and Run time Exceptions --> Data type, Schema mismatch, Some times the data is having null values. That time, we have to do debugging and fix the issue.
+
+3. S3 connection Timeout issue --> Increase the waiting time out for connection from pool.
+	--conf "spark.hadoop.fs.s3a.connection.timeout=100000000"
+
+4. Broadcast time out issue while doing broadcast joins --> 
+	Default ==> default spark.sql.broadcastTimeout is 300s
+	--conf "spark.sql.broadcastTimeout= 1200"
+
+5. Network timeout issue --> --conf “spark.network.timeout = 800”
+
+6. Space Issue --> No space left on device (Due to heavy shuffling --> Need to check join or repartition.)
+   Try to increase Executor memory --> --executor-memory 20G
