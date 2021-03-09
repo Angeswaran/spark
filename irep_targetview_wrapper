@@ -1,0 +1,106 @@
+#!/bin/bash
+if [ $# -ne 2 ]; then
+        echo "Incorrect number of arguments are passed. so exit from the process."
+        exit 1
+else
+        echo "expected number of arguments are passed. Good to go..!"
+fi
+
+#Reading the arguments
+common_property_file_path=$1
+echo ${common_property_file_path}
+
+table_name=$2
+echo ${table_name}
+
+#Validating Common property file exists or not in HDFS and reading the content of the file if file exists
+hdfs dfs -test -e ${common_property_file_path}
+if [ "$?" != "0" ]; then
+    echo "${common_property_file_path} is not found"
+    exit 1
+else
+    irep_properties=`hdfs dfs -cat ${common_property_file_path}`
+    export ${irep_properties}
+    echo "irep properties are exported successfully..!!"
+fi
+
+#Kerberos Initialization
+kinit -kt ${keyTabName} ${KeyTabPricipal}
+
+if [ "$?" != "0" ]; then
+    echo "Kerberos Authorization Failed"
+    exit 1
+else
+    echo "Kerberos Authorization Successful"
+fi
+
+#Validating table name is not empty
+hdfs dfs -test -e ${table_name}
+if [ -z "${table_name}" ]; then
+    echo "${table_name} is not valid"
+    exit 1
+else
+    consumption_config_file=${consumption_config}/${table_name}"_config.prm"
+    hdfs dfs -test -e ${consumption_config_file}
+    if [ "$?" != "0" ]; then
+            echo "${consumption_config_file} is missing"
+    else
+            typeCast_flag=`hdfs dfs -cat ${consumption_config_file} | grep enable_Datatypecasting | cut -d "=" -f2 | xargs`
+            echo "${typeCast_flag}"
+            if [ "${typeCast_flag}" == "Y" ]; then
+                    echo "Data type casting process is started for the table_name - ${table_name}"
+                    echo "Started time - "`date '+%Y-%m-%d_%H:%M:%S'`
+                    echo "spark2-submit --master ${master} --deploy-mode ${deploy_mode} --num-executors ${num_executors} --executor-cores ${executor_cores} --executor-memory ${executor_memory} --driver-memory ${driver_memory} --queue ${queue_name} ${typecasting_python_file} ${consumption_config_file} ${dimension_config} ${common_property_file_path}"
+
+                    spark2-submit --master ${master} --deploy-mode ${deploy_mode} --num-executors ${num_executors} --executor-cores ${executor_cores} --executor-memory ${executor_memory} --driver-memory ${driver_memory} --queue ${queue_name} ${typecasting_python_file} ${consumption_config_file} ${dimension_config} ${common_property_file_path} 2>&1
+
+                    if [ $? != 0 ]; then
+                            echo "Error: Data type casting job failed for the table_name - ${table_name}, Please check the log file for further debugging"
+                            exit 1
+                    else
+                            echo "Data type casting process is completed for the table_name - ${table_name}"
+                            echo "Ended time - "`date '+%Y-%m-%d_%H:%M:%S'`
+                    fi
+            else
+                    echo "Data TypeCasting is disabled for ${table_name}"
+            fi
+
+            dimension_conformation_flag=`hdfs dfs -cat ${consumption_config_file} | grep enable_Dimension_conformation | rev |  cut -c 2`
+            if [ ${dimension_conformation_flag} == "Y" ]; then
+                    echo "Dimension conformation process is started for the table_name - ${table_name}"
+                    echo "Started time - "`date '+%Y-%m-%d_%H:%M:%S'`
+
+                    echo "spark2-submit --master ${master} --deploy-mode ${deploy_mode} --num-executors ${num_executors} --executor-cores ${executor_cores} --executor-memory ${executor_memory} --driver-memory ${driver_memory} --queue ${queue_name} ${dim_conformation_pythonfile} '${dimension_config}' '${consumption_config_file}' '${data_node}' '${common_property_file_path}'"
+
+                    spark2-submit --master ${master} --deploy-mode ${deploy_mode} --num-executors ${num_executors} --executor-cores ${executor_cores} --executor-memory ${executor_memory} --driver-memory ${driver_memory} --queue ${queue_name} ${dim_conformation_pythonfile} ${dimension_config} ${consumption_config_file} ${data_node} ${common_property_file_path} 2>&1
+
+
+                    if [ $? != 0 ]; then
+                                            echo "Error: Dimension conformation job is failed for the table_name - ${table_name}, Please check the log file for further debugging"
+                                            exit 1
+                    else
+                                    echo "Dimension conformation job is completed successfully for the table_name - ${table_name}"
+                                    echo "Ended time - "`date '+%Y-%m-%d_%H:%M:%S'`
+
+                    fi
+            else
+                    echo "Dimension conformation is not needed for the table_name - ${table_name}"
+            fi
+
+            echo "Publish consumption is started for the table_name - ${table_name}"
+            echo "Started time - "`date '+%Y-%m-%d_%H:%M:%S'`
+
+            echo "spark2-submit --master ${master} --deploy-mode ${deploy_mode} --num-executors ${num_executors} --executor-cores ${executor_cores} --executor-memory ${executor_memory} --driver-memory ${driver_memory} --queue ${queue_name} ${publish_conformation_pythonfile} ${common_property_file_path} ${consumption_config_file} ${dimension_config}"
+
+            spark2-submit --master ${master} --deploy-mode ${deploy_mode} --num-executors ${num_executors} --executor-cores ${executor_cores} --executor-memory ${executor_memory} --driver-memory ${driver_memory} --queue ${queue_name} ${publish_conformation_pythonfile} ${common_property_file_path} ${consumption_config_file} ${dimension_config} 2>&1
+
+            if [ $? != 0 ]; then
+                            echo "Error: Publish consumption job is failed for the table_name - ${table_name}, Please check the log file for further debugging"
+                            exit 1
+            else
+                    echo "Publish consumption job is completed successfully for the table_name - ${table_name}"
+                    echo "Ended time - "`date '+%Y-%m-%d_%H:%M:%S'`
+            fi
+
+    fi
+fi

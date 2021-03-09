@@ -1,0 +1,287 @@
+#! /bin/bash
+
+if [ $# -ne 4 ]; then
+        echo "Incorrect number of arguments are passed. so exit from the process."
+        exit 1
+else
+        echo "expected number of arguments are passed. Good to go..!"
+fi
+
+#Reading the arguments
+PARAM_FILE=$1
+COMMON_PROPERTY_FILE_PATH=$2
+FILE_NAME=$3
+FEED_NAME=$4
+
+echo "PARAM_FILE is - ${PARAM_FILE}"
+echo "COMMON_PROPERTY_FILE_PATH is - ${COMMON_PROPERTY_FILE_PATH}"
+echo "FILE_NAME is - ${FILE_NAME}"
+echo "FEED_NAME is - ${FEED_NAME}"
+
+#Source the common property file
+. ${COMMON_PROPERTY_FILE_PATH}
+
+if [ "$?" != "0" ]; then
+    echo "${COMMON_PROPERTY_FILE_PATH} is not sourced properly. Please check."
+    exit 1
+else
+    echo "${COMMON_PROPERTY_FILE_PATH} is sourced successfully..!! Good to Go..!!"
+fi
+
+#Kerberos Initialization
+kinit -kt ${keyTabName} ${KeyTabPricipal}
+
+if [ "$?" != "0" ]; then
+    echo "Kerberos Authorization Failed"
+    exit 1
+else
+    echo "Kerberos Authorization Successful"
+fi
+
+USER=`printenv HCP360_USER`
+QUEUE_NAME=`printenv HCP360_QUEUE_NAME`
+
+echo "USER is - ${USER}"
+echo "QUEUE_NAME is - ${QUEUE_NAME}"
+
+POSTGRESQL_IP=`hdfs dfs -cat $PARAM_FILE | grep "POSTGRESQL_IP=" | cut -d "=" -f 2`
+POSTGRESQL_PORT=`hdfs dfs -cat $PARAM_FILE | grep "POSTGRESQL_PORT=" | cut -d "=" -f 2`
+POSTGRESQL_USER=`hdfs dfs -cat $PARAM_FILE | grep "POSTGRESQL_USER=" | cut -d "=" -f 2`
+POSTGRESQL_DB=`hdfs dfs -cat $PARAM_FILE | grep "POSTGRESQL_DB=" | cut -d "=" -f 2`
+POSTGRESQL_JCEKS=`hdfs dfs -cat $PARAM_FILE | grep "POSTGRESQL_JCEKS=" | cut -d "=" -f 2`
+POSTGRESQL_ALIAS=`hdfs dfs -cat $PARAM_FILE | grep "POSTGRESQL_ALIAS=" | cut -d "=" -f 2`
+
+METADATA_S3_ACCESS_FILE_LOC=`hdfs dfs -cat $PARAM_FILE | grep "METADATA_S3_ACCESS_FILE_LOC=" | cut -d "=" -f 2`
+METADATA_SOURCE_BUCKET=`hdfs dfs -cat $PARAM_FILE | grep "METADATA_SOURCE_BUCKET=" | cut -d "=" -f 2`
+METADATA_LANDING_BUCKET=`hdfs dfs -cat $PARAM_FILE | grep "METADATA_LANDING_BUCKET=" | cut -d "=" -f 2`
+METADATA_ARCHIVAL_BUCKET=`hdfs dfs -cat $PARAM_FILE | grep "METADATA_ARCHIVAL_BUCKET=" | cut -d "=" -f 2`
+METADATA_REJECT_BUCKET=`hdfs dfs -cat $PARAM_FILE | grep "METADATA_REJECT_BUCKET=" | cut -d "=" -f 2`
+
+METADATA_SOURCE_S3_PATH=`hdfs dfs -cat $PARAM_FILE | grep "METADATA_SOURCE_S3_PATH=" | cut -d "=" -f 2`
+METADATA_LANDING_S3_PATH=`hdfs dfs -cat $PARAM_FILE | grep "METADATA_LANDING_S3_PATH=" | cut -d "=" -f 2`
+METADATA_ARCHIVAL_S3_PATH=`hdfs dfs -cat $PARAM_FILE | grep "METADATA_ARCHIVAL_S3_PATH=" | cut -d "=" -f 2`
+METADATA_REJECT_S3_PATH=`hdfs dfs -cat $PARAM_FILE | grep "METADATA_REJECT_S3_PATH=" | cut -d "=" -f 2`
+
+METADATA_STAGINGTABLE=`hdfs dfs -cat $PARAM_FILE | grep "METADATA_STAGINGTABLE=" | cut -d "=" -f 2`
+METADATA_FEEDTABLE=`hdfs dfs -cat $PARAM_FILE | grep "METADATA_FEEDTABLE=" | cut -d "=" -f 2`
+METADATA_ATTRIBUTETABLE=`hdfs dfs -cat $PARAM_FILE | grep "METADATA_ATTRIBUTETABLE=" | cut -d "=" -f 2`
+
+METADATA_CCMAIL=`hdfs dfs -cat $PARAM_FILE | grep "METADATA_CCMAIL=" | cut -d "=" -f 2`
+METADATA_TOMAIL=`hdfs dfs -cat $PARAM_FILE | grep "METADATA_TOMAIL=" | cut -d "=" -f 2`
+
+METADATA_FILE_EXTN=`hdfs dfs -cat $PARAM_FILE | grep "METADATA_FILE_EXTN=" | cut -d "=" -f 2`
+
+MATADATA_AUDIT_DB=`hdfs dfs -cat $PARAM_FILE | grep "MATADATA_AUDIT_DB=" | cut -d "=" -f 2`
+MATADATA_AUDIT_TBL=`hdfs dfs -cat $PARAM_FILE | grep "MATADATA_AUDIT_TBL=" | cut -d "=" -f 2`
+
+METADATA_EFFECTIVE_ENDDATE=`hdfs dfs -cat $PARAM_FILE | grep "METADATA_EFFECTIVE_ENDDATE=" | cut -d "=" -f 2`
+METADATA_EFFECTIVE_ENDTIME=`hdfs dfs -cat $PARAM_FILE | grep "METADATA_EFFECTIVE_ENDTIME=" | cut -d "=" -f 2`
+
+echo "INFO: POSTGRESQL_IP is - $POSTGRESQL_IP "
+echo "INFO: POSTGRESQL_PORT is - $POSTGRESQL_PORT "
+echo "INFO: POSTGRESQL_USER is - $POSTGRESQL_USER "
+echo "INFO: POSTGRESQL_DB is - $POSTGRESQL_DB "
+echo "INFO: POSTGRESQL_JCEKS is - ${POSTGRESQL_JCEKS}"
+echo "INFO: POSTGRESQL_ALIAS is - ${POSTGRESQL_ALIAS}"
+
+echo "INFO: METADATA_S3_ACCESS_FILE_LOC is - ${METADATA_S3_ACCESS_FILE_LOC}"
+echo "INFO: METADATA_SOURCE_BUCKET is - ${METADATA_SOURCE_BUCKET}"
+echo "INFO: METADATA_LANDING_BUCKET is - ${METADATA_LANDING_BUCKET}"
+echo "INFO: METADATA_ARCHIVAL_BUCKET is - ${METADATA_ARCHIVAL_BUCKET}"
+echo "INFO: METADATA_REJECT_BUCKET is - ${METADATA_REJECT_BUCKET}"
+
+echo "INFO: METADATA_SOURCE_S3_PATH is - ${METADATA_SOURCE_S3_PATH}"
+echo "INFO: METADATA_LANDING_S3_PATH is - ${METADATA_LANDING_S3_PATH}"
+echo "INFO: METADATA_ARCHIVAL_S3_PATH is - ${METADATA_ARCHIVAL_S3_PATH}"
+echo "INFO: METADATA_REJECT_S3_PATH is - ${METADATA_REJECT_S3_PATH}"
+
+echo "INFO: METADATA_STAGINGTABLE is - ${METADATA_STAGINGTABLE}"
+echo "INFO: METADATA_FEEDTABLE is - ${METADATA_FEEDTABLE}"
+echo "INFO: METADATA_ATTRIBUTETABLE is - ${METADATA_ATTRIBUTETABLE}"
+
+echo "INFO: METADATA_CCMAIL is - ${METADATA_CCMAIL}"
+echo "INFO: METADATA_TOMAIL is - ${METADATA_TOMAIL}"
+
+echo "INFO: METADATA_FILE_EXTN is - ${METADATA_FILE_EXTN}"
+
+echo "INFO: MATADATA_AUDIT_DB is - ${MATADATA_AUDIT_DB}"
+echo "INFO: MATADATA_AUDIT_TBL is - ${MATADATA_AUDIT_TBL}"
+
+echo "INFO: METADATA_EFFECTIVE_ENDDATE is - ${METADATA_EFFECTIVE_ENDDATE}"
+echo "INFO: METADATA_EFFECTIVE_ENDTIME is - ${METADATA_EFFECTIVE_ENDTIME}"
+
+echo "INFO: python_import_metadata_postgresql is - ${python_import_metadata_postgresql}"
+
+# Validate extension of the metadata file
+valid_extn=`echo ${FILE_NAME} | grep "${METADATA_FILE_EXTN}"`
+if [ "${valid_extn}" != "" ]; then
+        echo ${FILE_NAME} "- is valid. Good to proceed.!!"
+else
+        echo "Invalid file format is provided for the Metadata file - ${FILE_NAME}. only xlsx file format supported. Please check."
+	echo "Invalid File extension provided for the File Name - ${FILE_NAME} is failed." | mailx -s "Status of Importing Metadata file "${FILE_NAME} -c ${METADATA_TOMAIL} ${METADATA_CCMAIL}
+        exit 1
+fi
+
+SOURCE_S3_PATH="s3a://${METADATA_SOURCE_BUCKET}/${METADATA_SOURCE_S3_PATH}"
+echo "SOURCE_S3_PATH is - ${SOURCE_S3_PATH}"
+
+LANDING_S3_PATH="s3a://${METADATA_LANDING_BUCKET}/${METADATA_LANDING_S3_PATH}"
+echo "LANDING_S3_PATH is - ${LANDING_S3_PATH}"
+
+ARCHIVAL_S3_PATH="s3a://${METADATA_ARCHIVAL_BUCKET}/${METADATA_ARCHIVAL_S3_PATH}"
+echo "ARCHIVAL_S3_PATH is - ${ARCHIVAL_S3_PATH}"
+
+REJECTION_S3_PATH="s3a://${METADATA_REJECT_BUCKET}/${METADATA_REJECT_S3_PATH}"
+echo "REJECTION_S3_PATH is - ${REJECTION_S3_PATH}"
+
+if [ -z "$SOURCE_S3_PATH" ]; then
+        echo "INFO: Source S3 bucket details is not available. Exit process "
+        exit 1
+fi
+
+if [ -z "$LANDING_S3_PATH" ]; then
+        echo "INFO: landing S3 bucket details is not available. Exit process "
+        exit 1
+fi
+
+if [ -z "$ARCHIVAL_S3_PATH" ]; then
+        echo "INFO: Archival S3 bucket details is not available. Exit process "
+        exit 1
+fi
+
+if [ -z "$REJECTION_S3_PATH" ]; then
+        echo "INFO: Rejection S3 bucket details is not available. Exit process "
+        exit 1
+fi
+
+echo "INFO: hadoop fs -Dmapred.job.queue.name=${QUEUE_NAME} -Dhadoop.security.credential.provider.path=${METADATA_S3_ACCESS_FILE_LOC} -ls ${SOURCE_S3_PATH}/${FILE_NAME} | wc -l"
+NO_OF_FILES=`hadoop fs -Dmapred.job.queue.name=${QUEUE_NAME} -Dhadoop.security.credential.provider.path=${METADATA_S3_ACCESS_FILE_LOC} -ls ${SOURCE_S3_PATH}/${FILE_NAME} | wc -l`
+
+echo "INFO: No of Metadata file received for the Source file ( ${FILE_NAME} ) is - $NO_OF_FILES "
+
+DATE=`date +%Y-%m-%d`
+
+export ${METADATA_S3_ACCESS_FILE_LOC}
+export ${POSTGRESQL_JCEKS}
+export ${ARCHIVAL_S3_PATH}
+export ${REJECTION_S3_PATH}
+export ${DATE}
+export ${QUEUE_NAME}
+export ${LANDING_S3_PATH}
+export ${FILE_NAME}
+
+if [ "${NO_OF_FILES}" -gt 0 ]; then
+        PROCESS_START_TIME=`date +'%Y-%m-%d %H:%M:%S'`
+
+        # Copying the metadata file from FTP to landing S3 path,
+        echo "INFO:hadoop distcp -Dmapred.job.queue.name=${QUEUE_NAME} -Dhadoop.security.credential.provider.path=${METADATA_S3_ACCESS_FILE_LOC} ${SOURCE_S3_PATH}/${FILE_NAME} ${LANDING_S3_PATH}/"
+        hadoop distcp -Dmapred.job.queue.name=${QUEUE_NAME} -Dhadoop.security.credential.provider.path=${METADATA_S3_ACCESS_FILE_LOC} ${SOURCE_S3_PATH}/${FILE_NAME} ${LANDING_S3_PATH}/
+
+        if [ $? != 0 ]; then
+                echo "INFO: Copying metadata file from Source FTP to Landing is Failed. Please check the logs"
+                exit 1
+        else
+                echo "INFO: Copying metadata file from Source FTP to Landing process succeeded..!!"
+                hadoop fs -Dmapred.job.queue.name=${QUEUE_NAME} -Dhadoop.security.credential.provider.path=${METADATA_S3_ACCESS_FILE_LOC} -rm -r -skipTrash ${SOURCE_S3_PATH}/${FILE_NAME}
+                if [ $? != 0 ]; then
+                        echo "INFO: Deleting Metadata file from Source FTP is failed.Please check the logs"
+                        exit 1
+                else
+                        echo "INFO: Deleting Metadata file from Source FTP is completed Successfully..!!"
+                fi
+        fi
+
+        #Adding the timestamp to the filename
+        filename=`echo ${FILE_NAME} | rev | cut -d"/" -f1 | rev`
+        filename_withoutextn=`echo "$filename" | rev | cut -d"." -f2 | rev`
+        file_extn=`echo "$filename" | rev | cut -d"." -f1 | rev`
+
+        export ${filename_timestamp}
+        export ${file_extn}
+
+        # Handling file format validation for metadata file
+        if [ "$file_extn" == "xlsx" ]; then
+                echo "Extension of metadata file is matched as expected..!!"
+        else
+                echo "Extension of metadata file is not matched as expected. Please validate once"
+                exit 1
+        fi
+
+        S3_FILE_NAME=${LANDING_S3_PATH}/${FILE_NAME}
+
+	time_now=`date "+%Y%m%d-%H%M%S"`
+        filename_timestamp=${filename_withoutextn}_${time_now}.${file_extn}
+
+        echo "spark2-submit --master ${master} --deploy-mode ${deploy_mode} --num-executors ${num_executors} --executor-cores ${executor_cores} --executor-memory ${executor_memory} --driver-memory ${driver_memory} --queue ${QUEUE_NAME} ${python_import_metadata_postgresql} ${POSTGRESQL_IP} ${POSTGRESQL_PORT} ${POSTGRESQL_USER} ${POSTGRESQL_DB} ${POSTGRESQL_JCEKS} ${POSTGRESQL_ALIAS} ${S3_FILE_NAME} ${FEED_NAME} ${USER} ${METADATA_STAGINGTABLE} ${METADATA_FEEDTABLE} ${METADATA_ATTRIBUTETABLE} ${MATADATA_AUDIT_DB} ${MATADATA_AUDIT_TBL} ${METADATA_EFFECTIVE_ENDDATE} ${METADATA_EFFECTIVE_ENDTIME} "
+
+        spark2-submit --master ${master} --deploy-mode ${deploy_mode} --num-executors ${num_executors} --executor-cores ${executor_cores} --executor-memory ${executor_memory} --driver-memory ${driver_memory} --queue ${QUEUE_NAME} ${python_import_metadata_postgresql} ${POSTGRESQL_IP} ${POSTGRESQL_PORT} ${POSTGRESQL_USER} ${POSTGRESQL_DB} ${POSTGRESQL_JCEKS} ${POSTGRESQL_ALIAS} ${S3_FILE_NAME} ${FEED_NAME} ${USER} ${METADATA_STAGINGTABLE} ${METADATA_FEEDTABLE} ${METADATA_ATTRIBUTETABLE} ${MATADATA_AUDIT_DB} ${MATADATA_AUDIT_TBL} ${METADATA_EFFECTIVE_ENDDATE} ${METADATA_EFFECTIVE_ENDTIME} 2>&1
+
+        if [ $? != 0 ]; then
+                echo "Error: Import Metadata process is failed for source file  - ${FILE_NAME}, Please check the log file for further debugging"
+
+                # Rejection path Started.
+                echo "Moving the metadata file into Rejection Bucket path."
+				
+		dir_exists=`hadoop fs -Dmapred.job.queue.name=${QUEUE_NAME} -Dhadoop.security.credential.provider.path=${METADATA_S3_ACCESS_FILE_LOC} -ls ${REJECTION_S3_PATH}/${FEED_NAME}`
+				
+		if [ "${dir_exists}" == "" ]; then 
+			echo "INFO: hadoop fs -Dmapred.job.queue.name=${QUEUE_NAME} -Dhadoop.security.credential.provider.path=${METADATA_S3_ACCESS_FILE_LOC} -mkdir ${REJECTION_S3_PATH}/${FEED_NAME}"
+			hadoop fs -Dmapred.job.queue.name=${QUEUE_NAME} -Dhadoop.security.credential.provider.path=${METADATA_S3_ACCESS_FILE_LOC} -mkdir ${REJECTION_S3_PATH}/${FEED_NAME}
+		else
+			echo "Rejection bucket dircetory for the feed name - ${FEED_NAME} alreday exists."
+		fi
+
+                echo "INFO:hadoop fs -Dmapred.job.queue.name=${QUEUE_NAME} -Dhadoop.security.credential.provider.path=${METADATA_S3_ACCESS_FILE_LOC} -mv ${LANDING_S3_PATH}/${FILE_NAME} ${REJECTION_S3_PATH}/${FEED_NAME}/REJ_${filename_timestamp}"
+                hadoop fs -Dmapred.job.queue.name=${QUEUE_NAME} -Dhadoop.security.credential.provider.path=${METADATA_S3_ACCESS_FILE_LOC} -mv ${LANDING_S3_PATH}/${FILE_NAME} ${REJECTION_S3_PATH}/${FEED_NAME}/REJ_${filename_timestamp}
+
+                if [ $? != 0 ]; then
+                        echo "INFO: Rejection move process failed"
+                        STATUS="FAILED"
+                        exit 1
+                else
+                        echo "INFO: Rejection Move process succeeded"
+                        STATUS="SUCCEEDED"
+                        # Archival Process is Completed Successfully..!!
+
+                        # Sending Email to BSA team stating that The job is failed due to Invalid Metadata file.
+                        echo "Sending Email to BSA team Started.."
+                        echo "Importing Metadata into Postgresql for the File Name - ${FILE_NAME} is failed." | mailx -s "Status of Importing Metadata file "${FILE_NAME} -c ${METADATA_TOMAIL} ${METADATA_CCMAIL}
+                        echo "Sending Email to BSA team completed."
+                fi
+
+                exit 1
+        else
+                echo "Import Metadata to PostgreSQL process is completed for the source file - ${FILE_NAME}"
+                # Archival Process is started..!!
+				
+		dir_exists=`hadoop fs -Dmapred.job.queue.name=${QUEUE_NAME} -Dhadoop.security.credential.provider.path=${METADATA_S3_ACCESS_FILE_LOC} -ls ${ARCHIVAL_S3_PATH}/${FEED_NAME}`
+				
+		if [ "${dir_exists}" == "" ]; then 
+			echo "INFO: hadoop fs -Dmapred.job.queue.name=${QUEUE_NAME} -Dhadoop.security.credential.provider.path=${METADATA_S3_ACCESS_FILE_LOC} -mkdir ${ARCHIVAL_S3_PATH}/${FEED_NAME}"
+			hadoop fs -Dmapred.job.queue.name=${QUEUE_NAME} -Dhadoop.security.credential.provider.path=${METADATA_S3_ACCESS_FILE_LOC} -mkdir ${ARCHIVAL_S3_PATH}/${FEED_NAME}
+		else
+			echo "Archival bucket dircetory for the feed name - ${FEED_NAME} alreday exists."
+		fi
+				
+                echo "INFO:hadoop fs -Dmapred.job.queue.name=${QUEUE_NAME} -Dhadoop.security.credential.provider.path=${METADATA_S3_ACCESS_FILE_LOC} -mv ${LANDING_S3_PATH}/${FILE_NAME} ${ARCHIVAL_S3_PATH}/${FEED_NAME}/${filename_timestamp}"
+                hadoop fs -Dmapred.job.queue.name=${QUEUE_NAME} -Dhadoop.security.credential.provider.path=${METADATA_S3_ACCESS_FILE_LOC} -mv ${LANDING_S3_PATH}/${FILE_NAME} ${ARCHIVAL_S3_PATH}/${FEED_NAME}/${filename_timestamp}
+
+                if [ $? != 0 ]; then
+                        echo "INFO: Archival move process failed"
+                        STATUS="FAILED"
+                        exit 1
+                else
+                        echo "INFO: Archival Move process succeeded"
+                        STATUS="SUCCEEDED"
+                        # Archival Process is Completed Successfully..!!
+                fi
+
+        fi
+
+        PROCESS_END_TIME=`date +'%Y-%m-%d %H:%M:%S'`
+
+else
+        echo "INFO: No new metadata file received for the Source file - ${FILE_NAME}"
+        STATUS="SUCCEEDED"
+        exit 1
+fi

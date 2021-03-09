@@ -1,0 +1,53 @@
+#Importing the modules
+import pydoop.hdfs as hdfs
+from hdfs_exec import hdfs_exec
+from Custom_Logger import getLogger
+import sys
+
+global LOGGER
+LOGGER = getLogger('Create_targetview_LOGGER')
+
+"""
+This function is used for create the target view name based on the prefix and Suffix configuration which is configured in the dim_config file.
+"""
+def createTargetViewName (dim_config, target_db_name, source_view_name):
+        try:
+            LOGGER.info("Entered into createTargetViewName() method")
+            LOGGER.info("dim_config is - {}".format(dim_config))
+            LOGGER.info("target_db_name is - {}".format(target_db_name))
+            LOGGER.info("source_view_name is - {}".format(source_view_name))
+
+            dim_config_data = hdfs_exec(dim_config)
+            exec(dim_config_data)
+            target_view_name = source_view_name
+
+            if(len(eval(target_db_name)['replace_prefix'].items()) != 0):
+                    for key, value in eval(target_db_name)["replace_prefix"].items():
+                            if(key == source_view_name[0: len(key)]):
+                                    target_view_name = value + source_view_name[len(key):len(source_view_name)]
+                                    break
+                    LOGGER.info("replace_prefix is done..!")
+
+            if(len(eval(target_db_name)['replace_suffix'].items()) != 0):
+                    for key, value in eval(target_db_name)["replace_suffix"].items():
+                            if(key == source_view_name[-len(key):]):
+                                    target_view_name = source_view_name[0:len(source_view_name)-len(key)] + value
+                                    break
+                    LOGGER.info("replace_suffix is done..!")
+
+            if(len(eval(target_db_name)['replace_keyword'].items()) != 0):
+                    for key, value in eval(target_db_name)["replace_keyword"].items():
+                            target_view_name.replace(key,value)
+                    LOGGER.info("replace_keyword is done..!")
+
+            if(eval(target_db_name)['add_prefix'] != ""):
+                    target_view_name = eval(target_db_name)["add_prefix"] + target_view_name
+                    LOGGER.info("add_prefix is done..!")
+
+            if(eval(target_db_name)['add_suffix'] != ""):
+                    target_view_name = target_view_name + eval(target_db_name)["add_suffix"]
+                    LOGGER.info("add_suffix is done..!")
+
+            return target_view_name
+        except:
+            LOGGER.error("Error occured in createTargetViewName method due to {}".format(sys.exc_info()))

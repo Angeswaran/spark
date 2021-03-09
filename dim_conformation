@@ -1,0 +1,429 @@
+#Importing the modules
+from pyspark import SparkContext
+from pyspark.sql import SQLContext
+from pyspark.sql import HiveContext
+import io
+import os
+import sys
+import subprocess
+from subprocess import *
+import commands
+import ConfigParser
+import StringIO
+from hdfs_exec import hdfs_exec
+from os import *
+from Custom_Logger import getLogger
+import target_viewname_creation as target_viewname_creation
+
+# Declaring the variables as global variables
+global initial_query
+global fact_col_query
+global dim_col_query
+global fact_table_query
+global dim_table_query
+global where_query
+global consumption_query
+global target_view_dbname
+global target_view_name
+global source_db_name
+global source_tablename
+global source_tablename_alias
+global source_columns
+global source_columns_excluded
+global where_condition
+global dim_list
+global LOGGER
+global table_name
+
+'''
+This function performs creating the select query based on the below logics.
+1. If Source columns are defined, iterate the source columns and create the select query.
+2. If source columns are not defined, collect the columns list from hive metastore and if source_columns_excluded parameter is defined, need to remove those columns from the collected columns from metastore.
+3. Finally returning the select query to the called function.
+'''
+def select_fact_columns(sqlContext,source_columns,source_db_name,source_tablename,source_tablename_alias,source_columns_excluded):
+        global LOGGER
+        fact_query = ""
+        src_col_list = []
+        try:
+            if(len(source_columns) != 0):
+                    for column in source_columns:
+                        fact_query += source_tablename_alias + "." + column + ","
+            else:
+                LOGGER.info("Entering into else part")
+                src_col_list = sqlContext.table(source_db_name+'.'+source_tablename).columns
+                LOGGER.info("src_col_list are")
+                LOGGER.info(src_col_list)
+                if(len(source_columns_excluded) != 0):
+                    for i in range(len(source_columns_excluded)):
+                        if(source_columns_excluded[i] in src_col_list):
+                            src_col_list.remove(source_columns_excluded[i])
+                        else:
+                            pass
+                for column in src_col_list:
+                    fact_query += source_tablename_alias + "." + column + ","
+
+            fact_query = fact_query.rstrip(",")
+            return fact_query
+        except:
+            LOGGER.error("Error occured in select_fact_columns method due to {}".format(sys.exc_info()))
+
+
+'''
+1. Creating the dimension query based on the dimension list configured and return the dimension query
+2. Returning the empty value if dimension list is empty
+'''
+def select_dim_columns(dim_list):
+        dim_column_list_query = ""
+        global LOGGER
+        try:
+            if(len(dim_list) != 0):
+                for dim in dim_list:
+                        if(dim['alias_name'] != "" and dim['dim_columnname'] != "" and dim['dim_columnname_alias'] != ""):
+                            dim_column_list_query += "," + dim['alias_name'] + "." + dim['dim_columnname'] + " as " + dim['dim_columnname_alias']
+                        elif(dim['alias_name'] != "" and dim['dim_columnname'] != "" and dim['dim_columnname_alias'] == ""):
+                            dim_column_list_query += "," + dim['alias_name'] + "." + dim['dim_columnname']
+                        elif(dim['alias_name'] == "" and dim['dim_columnname'] != "" and dim['dim_columnname_alias'] != ""):
+                            dim_column_list_query += ",'" + dim['dim_columnname'] + "' as " + dim['dim_columnname_alias']
+                        else:
+                            pass
+            else:
+                LOGGER.info("There is no dimension columns are configured")
+            return dim_column_list_query
+        except:
+            LOGGER.error("Error occured in select_dim_columns method due to {}".format(sys.exc_info()))
+
+
+'''
+This method is used to perform invalidate metadata for the view.
+'''
+def invalidate_metadata(target_view_dbname,target_view_name,data_node):
+        global LOGGER
+        try:
+            query = "invalidate metadata {}".format(target_view_dbname + "." + target_view_name)
+            result_string = 'impala-shell -i '+ data_node +' -q "'+query+'"'
+            status, output = commands.getstatusoutput(result_string)
+            if status == 0:
+                    LOGGER.info("Invalidate metadata is done for the target view - {}".format(target_view_dbname + "." + target_view_name))
+            else:
+                    LOGGER.info("Error encountered while executing Invalidate metadata for the view {}".format(target_view_dbname + "." + target_view_name))
+
+        except:
+            LOGGER.error("Error occured in invalidate_metadata method, Error message is {}".format(sys.exc_info()))
+            LOGGER.error("Input parameters are target_view_dbname- {}, target_view_name - {}, data_node - {}".format(target_view_dbname,target_view_name,data_node))
+
+'''
+This method is used to read common properties file
+'''
+def read_common_property(sc,common_property):
+        global LOGGER
+        try:
+            common_properties = sc.textFile(common_property).collect()
+            buf = StringIO.StringIO("\n".join(common_properties))
+            properties = ConfigParser.ConfigParser()
+            properties.readfp(buf)
+            return properties
+        except:
+            LOGGER.error("Error occured in read_common_property method due to {}".format(sys.exc_info()))
+
+'''
+This method is used to validate the mandatory properties in the config files
+'''
+def mandatory_config_validation(property,property_name):
+        try:
+            if(property != ""):
+                return property
+            else:
+                LOGGER.error("{} - property is not configured".format(property_name))
+
+        except:
+                LOGGER.error("{} - property is not available in the config file".format(property_name))
+
+
+'''
+This method is used to assigning the property values to the global variables which will be used across the framework
+'''
+def assign_values(table_config,common_properties, table_name, enable_Datatypecasting, TypeCasting,config_list, dim_config):
+        global target_view_dbname
+        global target_view_name
+        global source_db_name
+        global source_tablename
+        global source_tablename_alias
+        global source_columns
+        global source_columns_excluded
+        global where_condition
+        global dim_list
+        global LOGGER
+
+        try:
+            dim_config_data = hdfs_exec(dim_config)
+            exec(dim_config_data)
+            LOGGER.info("Entered into assign_values method..!!")
+            LOGGER.info("Number of target views are {}".format(len(config_list)))
+            if(len(config_list) > 1):
+                if(table_config['target_view_dbname'] == ""):
+                    LOGGER.info("There is no target_view_dbname is configured in Target view conformation property.")
+                    sys.exit(1)
+                else:
+                    target_view_dbname = mandatory_config_validation(table_config['target_view_dbname'], "target_view_dbname")
+                    LOGGER.info("target_view_dbname is {}".format(target_view_dbname))
+
+                if(table_config['target_view_name'] == ""):
+                    LOGGER.info("There is no target_view_name is configured in table property.")
+                    sys.exit(1)
+                else:
+                    target_view_name = mandatory_config_validation(table_config['target_view_name'], "target_view_name")
+                    LOGGER.info("target_view_name is {}".format(target_view_name))
+
+                if(table_config['source_db_name'] == ""):
+                    LOGGER.info("There is no source_db_name is configured in Target view conformation property.")
+                    sys.exit(1)
+                else:
+                    source_db_name = mandatory_config_validation(table_config['source_db_name'], "source_db_name")
+                    LOGGER.info("source_db_name is {}".format(source_db_name))
+
+                if(table_config['source_tablename'] == ""):
+                    LOGGER.info("There is no source_tablename is configured in Target view conformation property.")
+                    sys.exit(1)
+                else:
+                    source_tablename = mandatory_config_validation(table_config['source_tablename'], "source_tablename")
+                    LOGGER.info("source_tablename is {}".format(source_tablename))
+
+                if(table_config['source_tablename_alias'] == ""):
+                    LOGGER.info("There is no source_tablename_alias is configured in Target view conformation property.")
+                    sys.exit(1)
+                else:
+                    source_tablename_alias = mandatory_config_validation(table_config['source_tablename_alias'], "source_tablename_alias")
+                    LOGGER.info("source_tablename_alias is {}".format(source_tablename_alias))
+
+                source_columns = table_config['source_columns']
+                LOGGER.info("source_columns are {}".format(source_columns))
+
+                source_columns_excluded = table_config['source_columns_excluded']
+                LOGGER.info("source_columns_excluded is {}".format(source_columns_excluded))
+
+                where_condition = table_config['fact_where_condition']
+                LOGGER.info("where_condition is {}".format(where_condition))
+
+                dim_list = table_config['dimension_list']
+            else:
+                if(table_config['target_view_dbname'] == ""):
+                    if(common_properties.get("FileProperties","dc_target_view_dbname") == ""):
+                        LOGGER.info("There is no dc_target_view_dbname is configured in common property file.")
+                        sys.exit(1)
+                    else:
+                        target_view_dbname = common_properties.get("FileProperties","dc_target_view_dbname")
+                        LOGGER.info("target_view_dbname are {}".format(target_view_dbname))
+                else:
+                    target_view_dbname = mandatory_config_validation(table_config['target_view_dbname'], "target_view_dbname")
+                    LOGGER.info("target_view_dbname are {}".format(target_view_dbname))
+
+                if(table_config['target_view_name'] == ""):
+                    target_view_name = target_viewname_creation.createTargetViewName(dim_config, target_view_dbname, table_name)
+                    LOGGER.info("target_view_name are {}".format(target_view_name))
+                else:
+                    target_view_name = mandatory_config_validation(table_config['target_view_name'], "target_view_name")
+                    LOGGER.info("target_view_name are {}".format(target_view_name))
+
+                if(enable_Datatypecasting == "Y"):
+                    if(TypeCasting["targetdbname"] == ""):
+                        if(common_properties.get("FileProperties","typecast_target_db_name") == ""):
+                            LOGGER.info("There is no typecast_target_db_name is configured in common property file.")
+                            sys.exit(1)
+                        else:
+                            source_db_name = common_properties.get("FileProperties","typecast_target_db_name")
+                            LOGGER.info("source_db_name are {}".format(source_db_name))
+                    else:
+                        source_db_name = TypeCasting["targetdbname"]
+                        LOGGER.info("source_db_name are {}".format(source_db_name))
+                else:
+                    if(table_config['source_db_name'] == ""):
+                        if(common_properties.get("FileProperties","dc_source_db_name") == ""):
+                            LOGGER.info("There is no dc_source_db_name is configured in common property file.")
+                            sys.exit(1)
+                        else:
+                            source_db_name = common_properties.get("FileProperties","dc_source_db_name")
+                            LOGGER.info("source_db_name are {}".format(source_db_name))
+                    else:
+                        source_db_name = mandatory_config_validation(table_config['source_db_name'], "source_db_name")
+                        LOGGER.info("source_db_name are {}".format(source_db_name))
+
+                if(enable_Datatypecasting == "Y"):
+                    if(TypeCasting["targetviewname"] != ""):
+                        source_tablename = TypeCasting["targetviewname"]
+                        LOGGER.info("source_tablename are {}".format(source_tablename))
+                    else:
+                        source_tablename = target_viewname_creation.createTargetViewName(dim_config, source_db_name, table_name)
+                        LOGGER.info("source_tablename are {}".format(source_tablename))
+                else:
+                    if(table_config['source_tablename'] == ""):
+                        LOGGER.info("There is no source_tablename is configured in Target view conformation property.")
+                        sys.exit(1)
+                    else:
+                        source_tablename = mandatory_config_validation(table_config['source_tablename'], "source_tablename")
+                        LOGGER.info("source_tablename are {}".format(source_tablename))
+
+                if(table_config['source_tablename_alias'] == ""):
+                    if(common_properties.get("FileProperties","dc_source_tablename_alias") == ""):
+                        LOGGER.info("There is no dc_source_tablename_alias is configured in common property file.")
+                        sys.exit(1)
+                    else:
+                        source_tablename_alias = common_properties.get("FileProperties","dc_source_tablename_alias")
+                        LOGGER.info("source_tablename_alias are {}".format(source_tablename_alias))
+                else:
+                    source_tablename_alias = mandatory_config_validation(table_config['source_tablename_alias'], "source_tablename_alias")
+                    LOGGER.info("source_tablename_alias are {}".format(source_tablename_alias))
+
+                source_columns = table_config['source_columns']
+                LOGGER.info("source_columns are {}".format(source_columns))
+
+                source_columns_excluded = table_config['source_columns_excluded']
+                LOGGER.info("source_columns_excluded are {}".format(source_columns_excluded))
+
+                where_condition = table_config['fact_where_condition']
+                LOGGER.info("where_condition are {}".format(where_condition))
+
+                dim_list = table_config['dimension_list']
+        except:
+            LOGGER.error("Error occured in assign_values method due to {}".format(sys.exc_info()))
+
+
+def main(dim_config,consumption_config,data_node,common_property):
+        global LOGGER
+        global target_view_dbname
+        global target_view_name
+        global source_db_name
+        global source_tablename
+        global source_tablename_alias
+        global source_columns
+        global source_columns_excluded
+        global where_condition
+        global dim_list
+        global table_name
+
+        #Initializing the logger and setting level information
+        try:
+            LOGGER = getLogger('Dim_Conformation_LOGGER')
+        except:
+            print("Logger Initializing failed")
+        else:
+            #Initializing Spark Context and SQLContext
+            try:
+                sc = SparkContext("yarn", "Dimension Conformation")
+                hiveContext = HiveContext(sc)
+                sqlContext = SQLContext(sc)
+            except:
+                LOGGER.error("Spark initialization failed")
+            else:
+                #Checking whether dimension config file exists or not
+                LOGGER.info("main method started..!!")
+                LOGGER.info("dim_config file is {}".format(dim_config))
+                dim_config_data = hdfs_exec(dim_config)
+                exec(dim_config_data)
+                #Checking whether consumption(Fact) config file exists or not
+                LOGGER.info("Consumption config file is {}".format(consumption_config))
+                consumption_config_data = hdfs_exec(consumption_config)
+                exec(consumption_config_data)
+                LOGGER.info("dim_config and consumption_config files are executed successfully..!!")
+                #Reading the common properties from common property file
+                LOGGER.info("common_property file is {}".format(common_property))
+                common_properties = read_common_property(sc,common_property)
+                table = consumption_config.split("/")
+                table_name = table[len(table)-1].replace("_config.prm","")
+                LOGGER.info("Processing Table name is - {}".format(table_name))
+                try:
+                    #Collecting the list of target view configuration and iterating it
+                    if(len(target_view_conformation_list) != 0):
+                        config_list = target_view_conformation_list
+                        LOGGER.info("Number of target view conformation is {}".format(len(target_view_conformation_list)))
+                        for config in config_list:
+                            try:
+                                #Assigning the values to global variables from config files
+                                LOGGER.info("The Arguments of assign_values method is..!")
+                                LOGGER.info("Configuration of the corresponding Target view conformation is - {}".format(config))
+                                LOGGER.info("enable_Datatypecasting is - {}".format(enable_Datatypecasting))
+                                assign_values(config, common_properties, table_name, enable_Datatypecasting, TypeCasting,config_list,dim_config)
+                                #creating the initial query of the view
+                                initial_query = "create or replace view " + target_view_dbname + "." + target_view_name + " as select "
+                                LOGGER.info("initial_query is {}".format(initial_query))
+
+                                #Calling select_fact_columns function for getting the select query
+                                fact_col_query = select_fact_columns(sqlContext,source_columns,source_db_name,source_tablename,source_tablename_alias,source_columns_excluded)
+                                LOGGER.info("fact_col_query is {}".format(fact_col_query))
+
+                                #Calling select_dim_columns function for getting the dimenion select query
+                                dim_col_query = select_dim_columns(dim_list)
+                                LOGGER.info("dim_col_query is {}".format(dim_col_query))
+
+                                fact_table_query = " from " + source_db_name + "." + source_tablename + " as " + source_tablename_alias
+                                LOGGER.info("fact_table_query is {}".format(fact_table_query))
+
+                                #The below part will be handling the dimension tables query creation
+                                dim_table_query = ""
+                                dim_on_condition_value = ""
+                                for i in range(len(dim_list)):
+                                    for k,v in locals().items():
+                                        if v == dim_list[i]:
+                                                dim_on_condition = k + "_on_condition"
+                                                if(dim_on_condition != "v_on_condition"):
+                                                        dim_on_condition_value = config[dim_on_condition]
+                                                        LOGGER.info(dim_on_condition_value)
+                                                        temp_query = v['join'] + " " + v['table_name'] + " " + v['alias_name'] + " on " + dim_on_condition_value
+                                                        table_exits =  False
+                                                        if(temp_query in dim_table_query):
+                                                                table_exits = True
+                                                        if(table_exits == False):
+																if(v['table_name'] != ""):
+																		if(v['join'] != ""):
+																				dim_table_query += " " + v['join']
+																		if(v['table_name'] != ""):
+																				dim_table_query += " " + v['table_name']
+																		if(v['alias_name'] != ""):
+																				dim_table_query += " " + v['alias_name']
+																		if(dim_on_condition_value != ""):
+																				dim_table_query += " on " + dim_on_condition_value
+                                LOGGER.info("dim_table_query is {}".format(dim_table_query))
+
+                                # Including the where condition with target view level
+                                if(where_condition != ""):
+                                    where_query = " where " + where_condition
+                                    LOGGER.info("where_query is {}".format(where_query))
+                                else:
+                                    where_query = ""
+                                    LOGGER.info("where condition is not applicable")
+
+                                #Combining all piece of queries into final view query.
+                                view_query = initial_query + " " + fact_col_query + dim_col_query + fact_table_query + dim_table_query + where_query
+                                LOGGER.info("Complete final view query is - {}".format(view_query))
+
+                                #Executing the view query using SQLContext
+                                sqlContext.sql(view_query)
+                                LOGGER.info("Final view query is executed successfully..!!")
+                            except:
+                                LOGGER.error("Final target view - '{0}' is not created due to the unexcepted error {1}".format(target_view_dbname + "." + target_view_name, sys.exc_info()))
+                                sys.exit(1)
+                            else:
+                                LOGGER.info("Final target view - '{}' is created Successfully..!!".format(target_view_dbname + "." + target_view_name))
+                                invalidate_metadata(target_view_dbname,target_view_name,data_node)
+                        LOGGER.info("dimension_conformation_is_completed_successfully")
+                    else:
+                        LOGGER.info("There is no target view configuration available in the config file")
+                        sys.exit(0)
+                except:
+                    LOGGER.error("Job is failed due to the unexcepted error {0}".format(sys.exc_info()))
+                    sys.exit(1)
+                else:
+                    sys.exit(0)
+
+if __name__ == "__main__":
+        #Checking whether no of arguments are passed to this program or not
+        if(len(sys.argv) < 5):
+            LOGGER.info("Required arguments are not passed to the program. please check.")
+            sys.exit(1)
+        else:
+            #Reading the parameters and calling main method
+            dim_config = sys.argv[1]
+            consumption_config = sys.argv[2]
+            data_node = sys.argv[3]
+            common_property = sys.argv[4]
+            main(dim_config,consumption_config,data_node,common_property)

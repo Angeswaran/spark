@@ -1,0 +1,39 @@
+enable_Datatypecasting = "Y"
+TypeCasting = {
+        "sourcedbname"                  : "",
+        "sourcetablename"               : "abbvie_clinical_trial_abv___ref",
+        "targetdbname"                  : "",
+        "targetviewname"                : "",
+        "columnlist"                    : "hdfs://COPPROD/user/svc-cop-hcp360load-p/Resources/Properties/abbvie_clinical_trial_abv___ref_columnlist.prm",
+}
+
+Dedupe = {
+        "dedupeflag"                    : "Y",
+        "dedupecolumns"                 : "id,lastmodifieddate"
+}
+
+enable_publish_Consumption = "Y"
+publish_Consumption = {
+        "targetdbname"                  : "abv_hcp360_integrated_gm",
+        "targetviewname"                : "",
+}
+
+enable_Dimension_conformation = "Y"
+enable_Dim_Publish_Consumption = "Y"
+
+target_view_conformation1 = {
+        "target_view_dbname"            	: "abv_hcp360_integrated_gm_work",
+        "target_view_name"              	: "",
+        "source_db_name"                	: "abv_hcp360_irep_mgmt",
+        "source_tablename"              	: "",
+        "consumption_db_name"           	: "abv_hcp360_integrated_gm",
+        "consumption_view_name"         	: "",
+        "source_columns"                	: [],
+        "source_columns_excluded"       	: [],
+        "source_tablename_alias"        	: "fact",
+        "dimension_list"                	: [src_system_name],
+        "src_system_name_on_condition"  	: "",
+	"fact_where_condition"          	: ""
+}
+
+target_view_conformation_list = [target_view_conformation1]

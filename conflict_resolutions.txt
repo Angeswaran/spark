@@ -1,0 +1,504 @@
+from pyspark import *
+import sys
+import os
+import io
+from datetime import datetime
+import psycopg2
+import pandas as pd
+import sqlalchemy
+import json
+from sqlalchemy import create_engine
+from pandas import DataFrame
+import hashlib
+from hashlib import sha256
+import logging
+from Custom_Logger import getLogger
+from pyspark import *
+from pyspark.sql import SparkSession
+from pyspark.sql import HiveContext
+from pyspark.sql.functions import expr, current_timestamp, lit, concat_ws, coalesce, count
+from pyspark.sql import *
+from pyspark.sql import Row
+from pyspark.sql.functions import monotonically_increasing_id, row_number
+from pyspark.sql.window import Window
+#import target_viewname_creation as target_viewname_creation_dim
+#import getPropertyValues as getProperty
+#from hdfs_exec import hdfs_exec
+from pyspark.sql.types import StructType,StructField, StringType
+from pyspark.sql.functions import udf
+import commands
+
+global LOGGER
+global file_name
+global profile_type
+global data_source_id
+global dataset_name
+global src_franchise_column_name
+global src_brand_column_name
+global src_indication_column_name
+global src_branded_unbranded_column_name
+global feed_data_owners_email
+global src_cateogry_column_name
+global src_cateogry_value_column_name
+global frequency
+global data_source_name
+global vendor_name
+global src_attribution_effective_date_column
+global feed_attribution_effective_date_logic
+global final_query
+final_query = ""
+global attr_dict
+attr_dict = {}
+
+
+def extractPasswordFromJceks(spark,jceksfile,password_alias):
+    global password
+    try:
+        config_jceks = spark.sparkContext._jsc.hadoopConfiguration()
+        config_jceks.set("hadoop.security.credential.provider.path",jceksfile)
+        temp = config_jceks.getPassword(password_alias)
+        password = ""
+        for i in range(temp.__len__()):
+            password = password+str(temp.__getitem__(i))
+        return password
+    except:
+        LOGGER.error("Error occured in extractPasswordFromJceks method due to {}".format(sys.exc_info()))
+
+def establishPostgreSQLConnection(spark, jceksfile, password_alias, user, host, port, database):
+    global LOGGER
+    try:
+        #connection = psycopg2.connect(user = "svc_lc_cdlh_d_hcp360", password = "1WTIcb8Fl@sn", host = "10.74.230.113", port = "5432", database = "abv_hcp360_hba")
+        password = extractPasswordFromJceks(spark, jceksfile, password_alias)
+        connection = psycopg2.connect(user = user, password = password, host = host, port = port, database = database)
+        return connection
+    except (Exception, psycopg2.Error) as error :
+        LOGGER.info("Error while connecting to PostgreSQL", error)
+
+def read_conflict_sequence(spark, jceksfile, password_alias, user, host, port, database, feed_name):
+    global LOGGER
+    try:
+        LOGGER.info("Entered into readStagingRecord method")
+        connection = establishPostgreSQLConnection(spark, jceksfile, password_alias, user, host, port, database)
+        LOGGER.info("Postgresql Connection established successfully..!!")
+        cursor = connection.cursor()
+        cursor.execute("select conflict_sequence from hba_metadata_attribute_info where is_active = 1 and feed_name = '" + feed_name + "' ;")
+        rows = cursor.fetchall()
+        connection.close()
+        return rows
+    except:
+        LOGGER.error("Error occured in read_conflict_sequence method due to {}".format(sys.exc_info()))
+
+'''
+This method is used to perform invalidate metadata for the view.
+'''
+def invalidate_metadata(standard_dbname,standard_tablename,data_node):
+    global LOGGER
+    try:
+        query = "invalidate metadata {}".format(standard_dbname + "." + standard_tablename)
+        result_string = 'impala-shell -i '+ data_node +' -q "'+query+'"'
+        status, output = commands.getstatusoutput(result_string)
+        if status == 0:
+                LOGGER.info("Invalidate metadata is done for the target view - {}".format(standard_dbname + "." + standard_tablename))
+        else:
+                LOGGER.info("Error encountered while executing Invalidate metadata for the view {}".format(standard_dbname + "." + standard_tablename))
+
+    except:
+        LOGGER.error("Error occured in invalidate_metadata method, Error message is {}".format(sys.exc_info()))
+        LOGGER.error("Input parameters are standard_dbname- {}, standard_tablename - {}, data_node - {}".format(standard_dbname,standard_tablename,data_node))
+
+def covertJsonDict(conflict_metadata):
+    conflict_dict={}
+    conflict_sequence=[x[0] for x in conflict_metadata]
+    conflict_dict=json.loads(conflict_sequence[0])
+    return conflict_dict
+
+#INFO: Filtering the column based on "filter" col.
+def filter_segments(sqlcontext,filter_condition, standard_dbname, standard_tablename):
+    global LOGGER
+    LOGGER.info("Entered into filter_segments method..!!")
+    LOGGER.info("The Arguments are..")
+    LOGGER.info("sqlcontext is - {}".format(sqlcontext))
+    LOGGER.info("filter_condition is - {}".format(filter_condition))
+    LOGGER.info("standard_dbname is - {}".format(standard_dbname))
+    LOGGER.info("standard_tablename is - {}".format(standard_tablename))
+    
+    conditions_list=filter_condition.split(' and ')
+    itr4=0
+    filter_elements=[]
+    while(itr4 < len(conditions_list)):
+        values=conditions_list[itr4].split('=')
+        upper_values=["{}{}{}".format('upper(',i.strip(),')') for i in values]
+        str='%s' % ' = '.join(upper_values)
+        filter_elements.append(str)
+        itr4=itr4+1
+    filter_condition='%s' % ' and '.join(filter_elements)
+
+    itr5=0
+    filter_elements=[]
+    while(itr5 < len(conditions_list)):
+        values=conditions_list[itr5].split('=')
+        upper_values=["{}{}{}".format('upper(',i.strip(),')') for i in values]
+        str='%s' % ' <> '.join(upper_values)
+        filter_elements.append(str)
+        itr5=itr5+1
+	
+    anti_filter_condition='%s' % ' or '.join(filter_elements)
+
+    LOGGER.info("formatting the filter condition value completed successfully..") 
+    LOGGER.info("filter_condition after formatting - {}".format(filter_condition))
+    segment_data = sqlcontext.sql("select * from " + standard_dbname + "." + standard_tablename + " where {}".format(filter_condition))
+    anti_segment_data = sqlcontext.sql("select * from " + standard_dbname + "." + standard_tablename + " where {}".format(anti_filter_condition))
+    LOGGER.info("Segment data dataframe is created..!!")    
+    
+    return segment_data,anti_segment_data
+
+def find_conflictdata(sqlcontext,primary_keys,segment_data):
+    global LOGGER
+    LOGGER.info("Entered into find_conflictdata method..!!")
+    LOGGER.info("length of the Primary key is - {}".format(len(primary_keys)))
+    itr=0
+    rank_columns = []
+    while(itr < len(primary_keys)):
+        if(itr != len(primary_keys)-1):
+            rank_columns.append("c.{1}=d.{0} AND".format(primary_keys[itr],primary_keys[itr]))
+        else:
+            rank_columns.append("c.{1}=d.{0}".format(primary_keys[itr],primary_keys[itr]))
+        itr=itr+1
+    
+    LOGGER.info("rank_columns are - {}".format(rank_columns))
+    
+    str_rank_columns =' '.join(rank_columns)
+    LOGGER.info("str_rank_columns are - {}".format(str_rank_columns))
+    
+    segment_grouped = segment_data.groupBy(primary_keys).count()
+    LOGGER.info("Segment is grouped based on primary key")
+    
+    segment_grouped.createOrReplaceTempView("segment_grouped")
+    segment_data.createOrReplaceTempView("segment_data")
+    LOGGER.info("Temp views are created for segment and segment grouped data..")
+    
+    conflict_data=sqlcontext.sql("Select c.* from segment_data c join segment_grouped d on {} where d.count > 1".format(str_rank_columns))
+    LOGGER.info("Conflict data dataframe created..!!")
+    unique_data=sqlcontext.sql("Select c.* from segment_data c join segment_grouped d on {} where d.count = 1".format(str_rank_columns))
+    LOGGER.info("Unique data dataframe created..!!")
+    
+    return conflict_data,unique_data
+
+
+
+#Mapping dictionary {key,value} pair to DF 'ID{}' columns based on existing column.
+def translate(mapping):
+    def translate_(col):
+        return mapping.get(col)
+    return udf(translate_, StringType())
+    
+def update_newrecords(sqlcontext, unique_data):
+    global LOGGER
+    try:
+        df_unique=unique_data
+        if(unique_data.count > 0):
+            df_new = unique_data.filter(unique_data.priority_order < 0)
+                  
+            df_old = unique_data.filter(unique_data.priority_order > 0)
+            
+            df_new=df_new.withColumn("priority_sequence",lit("1")).drop('priority_order').withColumnRenamed('priority_sequence', 'priority_order')
+            df_new.createOrReplaceTempView("df_new")
+            df_new = sqlcontext.sql("select file_name, feed_name, profile_type, data_source_provider_name, data_source_provider_id, profile_identifier, attribution_value, src_attribution_value,  mdm_product_identifier, mdm_market_identifier, brand_name, indication_name, indication_abbreviation, branded_unbranded,  category_name, category_value, frequency, source, vendor_name, ingestion_datetime, attribution_effective_datetime, active_flag, cast(priority_order as int) as priority_order, franchise_name, attribution_name from df_new")
+            df_unique=df_old.union(df_new)                   
+        else:
+            LOGGER.info("There is no records are available in unique dataframe")
+        return df_unique
+    except:
+        LOGGER.error("Error occured in update_newrecords method due to {}".format(sys.exc_info()))
+        
+def validate_asc_desc(order_by_values, order_by_list, conflict_dict, itr):
+    global LOGGER
+    conflict_keys = conflict_dict.keys()
+        
+    if "ASC" or "DESC" in order_by_values:
+        LOGGER.info("Entered into ASC/DESC operations..")
+        order_by_value_list1=[v for k,v in conflict_dict[conflict_keys[itr]]['order_by'].items() if v in ("ASC","DESC")]
+        LOGGER.info("Order by Value list is - {}".format(order_by_value_list1))
+        
+        order_by_key_list1=[k for k,v in conflict_dict[conflict_keys[itr]]['order_by'].items() if v in ("ASC","DESC")]
+        LOGGER.info("Order by key list is - {}".format(order_by_key_list1))
+        
+        no_rank_key1=len(order_by_value_list1)
+        itr2=0
+        while itr2<no_rank_key1:
+            LOGGER.info("Order by list is -{}".format(order_by_list))
+            LOGGER.info("order by key is - {}".format(order_by_key_list1[itr2]))
+            LOGGER.info("order by value is - {}".format(order_by_value_list1[itr2]))
+            order_by_list.append("{0} {1} nulls LAST".format(order_by_key_list1[itr2],order_by_value_list1[itr2]))
+            LOGGER.info("append completed")
+            itr2=itr2+1
+        return order_by_list
+        LOGGER.info(" order_by_list in validate_asc_desc method is - {}".format(order_by_list))
+    else:
+        LOGGER.info("ASC/DESC logic is not provided in conflict resolution")
+        return order_by_list
+                                        
+        
+
+def main(spark,sqlcontext, postgresql_ip, postgresql_port, postgresql_user, postgresql_db, postgresql_jceks, postgresql_alias, feed_name, loggedin_user, standard_dbname, standard_tablename, data_node, queue_name):
+    global LOGGER    
+    try:
+        LOGGER.info("Entered into main method..!!")
+        conflict_metadata = []
+        conflict_metadata = read_conflict_sequence(spark, postgresql_jceks, postgresql_alias, postgresql_user, postgresql_ip, postgresql_port, postgresql_db, feed_name)
+        LOGGER.info("conflict_metadata is - {}".format(conflict_metadata))
+
+        conflict_dict = covertJsonDict(conflict_metadata)
+        LOGGER.info("conflict_dict are - {}".format(conflict_dict))
+        
+        conflict_keys = conflict_dict.keys()
+        LOGGER.info("conflict_keys are - {}".format(conflict_keys))
+        
+        itr = 0
+        while(itr < len(conflict_dict)):
+            LOGGER.info("Iteration is - {}".format(itr))
+            if('filter' in conflict_dict[conflict_keys[itr]]):
+                LOGGER.info("Entered into Filter Logic")
+                filter_condition = conflict_dict[conflict_keys[itr]]['filter']
+                LOGGER.info("filter_condition is - {}".format(filter_condition))
+                
+                segment_data,anti_segment_data = filter_segments(sqlcontext,filter_condition, standard_dbname, standard_tablename)
+                LOGGER.info("Filter Segment method is completed Successfully..!!")
+            else:
+                segment_data = sqlcontext.sql("select * from " + standard_dbname + "." + standard_tablename)
+                anti_segment_data = sqlcontext.sql("select * from " + standard_dbname + "." + standard_tablename + " limit 0")
+				
+            if(segment_data.count() == 0):
+                LOGGER.info("There is no segment data available in - " + standard_dbname + "." + standard_tablename + " So conflict resolution is not required to Start.")
+            else:
+                LOGGER.info("There is a segment data available in - " + standard_dbname + "." + standard_tablename)
+                if('rank' in conflict_dict[conflict_keys[itr]]):
+                    LOGGER.info("Entered into rank operations")
+                    primary_keys = conflict_dict[conflict_keys[itr]]['rank']
+                    LOGGER.info("primary_keys are - {}".format(primary_keys))
+                    
+                    conflict_data,unique_data = find_conflictdata(sqlcontext,primary_keys,segment_data)
+                    
+                    LOGGER.info("find_conflictdata method is completed successfully..!!")
+                    LOGGER.info("unique_data count : {}".format(unique_data.count()))
+                    LOGGER.info("conflict_data count : {}".format(conflict_data.count()))                 
+                    
+                    LOGGER.info("Updating Priority order from -1 to 1 for new records")
+                    df_unique = update_newrecords(sqlcontext, unique_data)
+                                            
+                    if(df_unique.count > 0):
+                        LOGGER.info("Updating Priority order from -1 to 1 for new records and merging old and new records also completed successfully..!!")
+                    else:
+                        LOGGER.info("Updating Priority order from -1 to 1 for new records is failed. please check logs for further debugging..")
+                        sys.exit(1)
+                    
+                    if(conflict_data.count() == 0):
+                        LOGGER.info("There is no conflict data. So conflict resolution process is not required for - " + standard_dbname + "." + standard_tablename)
+                        LOGGER.info("Updating Priority order 1 records back to " + standard_dbname + "." + standard_tablename)
+                        final_resolved_data = df_unique
+                        final_resolved_data.createOrReplaceTempView("final_resolved_data")
+            
+                    else: 
+                        LOGGER.info("There is a conflict data available. So conflict resolution process is continuing..")
+                        if('order_by' in conflict_dict[conflict_keys[itr]]):
+                            LOGGER.info("Entered into Order by operations")
+                            order_by_keys = conflict_dict[conflict_keys[itr]]['order_by'].keys()
+                            LOGGER.info("order by keys are - {}".format(order_by_keys))
+                            
+                            order_by_values = conflict_dict[conflict_keys[itr]]['order_by'].values()
+                            LOGGER.info("order by values are - {}".format(order_by_values))
+                            
+                            order_by_dict = {k: v for k, v in conflict_dict[conflict_keys[itr]]['order_by'].items() if v not in ("ASC","DESC")}
+                            LOGGER.info("Order by dictionary with out ASC/DESC items")
+                            
+                            order_by_value_list=[v for k,v in conflict_dict[conflict_keys[itr]]['order_by'].items() if v not in ("ASC","DESC")]
+                            LOGGER.info("Order by dictionary Values with out ASC/DESC items")
+                            
+                            order_by_key_list=[k for k,v in conflict_dict[conflict_keys[itr]]['order_by'].items() if v not in ("ASC","DESC")]
+                            LOGGER.info("Order by dictionary Keys with out ASC/DESC items")
+                            
+                            asc_desc_dict = {k: v for k, v in conflict_dict[conflict_keys[itr]]['order_by'].items() if v in ("ASC","DESC")}
+                            LOGGER.info("Order by dictionary with only ASC/DESC items")
+            
+                            priority_dict={}
+                            temp_id_cols=[]
+                            order_by_list=[]
+                            LOGGER.info("Priority dict and lists are created..!")
+                            
+                            if(len(order_by_dict) != 0):
+                                for i, row in enumerate(order_by_dict):
+                                    sub_dict={}
+                                    for k, row1 in enumerate(order_by_dict.values()[i]):
+                                        sub_dict[row1]=k
+                                    priority_dict[row]=sub_dict
+            
+                                no_rank_key=len(order_by_key_list)
+                                itr1=0
+                                while itr1<no_rank_key:
+                                    conflict_data=conflict_data.withColumn("ID{}".format(itr1), translate(priority_dict.values()[itr1])(order_by_key_list[itr1]))
+                                    order_by_list.append("ID{} nulls LAST".format(itr1))
+                                    temp_id_cols.append("ID{}".format(itr1))
+                                    itr1=itr1+1
+                                LOGGER.info("conflict_data sample inside")
+                                #conflict_data.show()
+                                conflict_data.createOrReplaceTempView("conflict_data")
+                                
+                                order_by_list = validate_asc_desc(order_by_values, order_by_list, conflict_dict, itr)
+                                
+                                str_order_by_list='%s' % ','.join(order_by_list)
+                                str_primary_keys='%s' % ','.join(primary_keys)
+                                
+                                conflict_data_id_priority=sqlcontext.sql("select c.*,ROW_NUMBER() over(partition by {0} order by {1}) AS priority_sequence from conflict_data c".format(str_primary_keys,str_order_by_list))
+                                LOGGER.info("dropping the id columns from conflict dataframe")
+                                df_resolved_data=conflict_data_id_priority.drop(*temp_id_cols)
+                                df_resolved_data=df_resolved_data.drop('priority_order').withColumnRenamed('priority_sequence', 'priority_order')
+                                LOGGER.info("renaming from priority_sequence to priority_order completed ")            
+                                df_resolved_data.createOrReplaceTempView("resolved_data")
+                            
+                            elif(len(asc_desc_dict) != 0):
+                                LOGGER.info("Order by logic is not provided in conflict resolution logic with out ASC/DESC")
+                                LOGGER.info("Checking ASC/DESC columns in conflict resolution logic")
+                                conflict_data.createOrReplaceTempView("conflict_data")
+                                order_by_list = validate_asc_desc(order_by_values, order_by_list, conflict_dict, itr)
+                                
+                                str_order_by_list='%s' % ','.join(order_by_list)
+                                str_primary_keys='%s' % ','.join(primary_keys)
+                                
+                                conflict_data_priority=sqlcontext.sql("select c.*,ROW_NUMBER() over(partition by {0} order by {1}) AS priority_sequence from conflict_data c".format(str_primary_keys,str_order_by_list))                    
+                                
+                                df_resolved_data=conflict_data_priority.drop('priority_order').withColumnRenamed('priority_sequence', 'priority_order')
+                                
+                                df_resolved_data.createOrReplaceTempView("resolved_data")                                    
+                                
+                            else:
+                                LOGGER.info("Both priority and ASC/DESC logic are not provided in conflict resolution logic.")
+                                LOGGER.info("Based on Row number logic, fetch top record as original")
+                                conflict_data.createOrReplaceTempView("conflict_data")
+                                str_primary_keys='%s' % ','.join(primary_keys)
+                                
+                                conflict_data_priority=sqlcontext.sql("select c.*,ROW_NUMBER() over(partition by {0} order by (select 1)) AS priority_sequence from conflict_data c".format(str_primary_keys))                    
+                                
+                                df_resolved_data=conflict_data_priority.drop('priority_order').withColumnRenamed('priority_sequence', 'priority_order')
+                                
+                                df_resolved_data.createOrReplaceTempView("resolved_data")
+                        else:
+                            LOGGER.info("order by not provided in conflict resolution logic.")
+                            LOGGER.info("Based on Row number logic, fetch top record as original")
+                            conflict_data.createOrReplaceTempView("conflict_data")
+                            str_primary_keys='%s' % ','.join(primary_keys)
+                            
+                            conflict_data_priority=sqlcontext.sql("select c.*,ROW_NUMBER() over(partition by {0} order by (select 1)) AS priority_sequence from conflict_data c".format(str_primary_keys))                    
+                            
+                            df_resolved_data=conflict_data_priority.drop('priority_order').withColumnRenamed('priority_sequence', 'priority_order')
+                            
+                            df_resolved_data.createOrReplaceTempView("resolved_data")
+                    
+                        df_resolved_data=sqlcontext.sql("select file_name, feed_name, profile_type, data_source_provider_name, data_source_provider_id, profile_identifier, attribution_value, src_attribution_value,  mdm_product_identifier, mdm_market_identifier, brand_name, indication_name, indication_abbreviation, branded_unbranded,  category_name, category_value, frequency, source, vendor_name, ingestion_datetime, attribution_effective_datetime, active_flag, cast(priority_order as int) as priority_order, franchise_name, attribution_name from resolved_data")
+                        final_resolved_data = df_resolved_data.union(df_unique)
+                        LOGGER.info("final dataframe - {}".format(final_resolved_data))
+                        final_resolved_data.createOrReplaceTempView("final_resolved_data")
+                        LOGGER.info("final dataframe count - {}".format(final_resolved_data.count()))
+                        
+                    df_standard_prefinal = sqlcontext.sql("select file_name, feed_name, profile_type, data_source_provider_name, data_source_provider_id, profile_identifier, attribution_value, src_attribution_value,  mdm_product_identifier, mdm_market_identifier, brand_name, indication_name, indication_abbreviation, branded_unbranded,  category_name, category_value, frequency, source, vendor_name, ingestion_datetime, attribution_effective_datetime, active_flag, cast(priority_order as int) as priority_order, franchise_name, attribution_name from final_resolved_data")
+                                     
+		    df_standard_final = df_standard_prefinal.union(anti_segment_data)
+		    df_standard_final.createOrReplaceTempView("finalstandarddata")
+		    LOGGER.info("Ordering the Standard columns are completed..!!")
+                    
+                    if(df_standard_final.count() == 0):
+                        LOGGER.info("df_standard_final count is empty. Unable to update the records in - " + standard_dbname + "." +  standard_tablename)
+                    else: 
+                                                                         
+                        LOGGER.info("Setting spark properties for dynamic partitions..")
+                        sqlcontext.sql("set mapred.job.queue.name=" + queue_name)
+                        sqlcontext.sql("SET hive.exec.dynamic.partition = true")
+                        sqlcontext.sql("SET hive.exec.dynamic.partition.mode = nonstrict")
+                        LOGGER.info("Setting Setting spark properties are completed..")
+                        
+                        parent_partition_column = "franchise_name"
+                        child_partition_column = "attribution_name"
+                        
+                        LOGGER.info("Final overwrite query is - {}".format("insert overwrite table " + standard_dbname + "." +  standard_tablename + " partition(" + parent_partition_column + "," + child_partition_column + ") select * from finalstandarddata"))
+                        
+                        sqlcontext.sql("insert overwrite table " + standard_dbname + "." +  standard_tablename + " partition(" + parent_partition_column + "," + child_partition_column + ") select * from finalstandarddata")
+                        
+                        LOGGER.info("Updated conflict resolved data into - " + standard_dbname + "." +  standard_tablename + " is completed Successfully..!!")
+                        sqlcontext.sql("MSCK REPAIR TABLE " + standard_dbname + "." +  standard_tablename)
+                        LOGGER.info("MSCK Repair has been done for - " + standard_dbname + "." +  standard_tablename)
+                        
+                        invalidate_metadata(standard_dbname,standard_tablename,data_node)
+                        LOGGER.info("Invalidate metadata has been done for - " + standard_dbname + "." +  standard_tablename)
+                else:
+                    LOGGER.info("Rank condition is not provided in the Conflict Resolution logic. So terminating the process.")
+                    sys.exit(1)
+                
+            itr = itr+1
+        
+    except:
+        LOGGER.error("Error occured in main method due to {}".format(sys.exc_info()))
+        sys.exit(1)
+
+if __name__=="__main__":
+    global LOGGER
+
+    #Checking whether no of arguments are passed to this program or not
+    if(len(sys.argv) < 15):
+        LOGGER.info("Required arguments are not passed to the program. please check.")
+        sys.exit(1)
+    else:
+        #Setting up logger level
+        LOGGER = getLogger('Conflict_Resolutions')
+        LOGGER.info("Logger initialization Completed..!!")
+
+        #Reading the parameters and calling main method
+        postgresql_ip = sys.argv[1]
+        postgresql_port = sys.argv[2]
+        postgresql_user = sys.argv[3]
+        postgresql_db = sys.argv[4]
+        postgresql_jceks = sys.argv[5]
+        postgresql_alias = sys.argv[6]
+        feed_name = sys.argv[7]
+        loggedin_user = sys.argv[8]
+        db_suffix = sys.argv[9]
+        dbsuffix = db_suffix.replace("dbsuffix","")
+        standarddbname = sys.argv[10]
+        standard_dbname = standarddbname + dbsuffix
+        standard_tablename = sys.argv[11]
+        data_node = sys.argv[12]
+        aws_path = sys.argv[13]
+	queue_name = sys.argv[14]
+
+        LOGGER.info("Arguments passed to the Loading data into Consolidated module are..")
+        LOGGER.info("postgresql_ip is - {}".format(postgresql_ip))
+        LOGGER.info("postgresql_port is - {}".format(postgresql_port))
+        LOGGER.info("postgresql_user is - {}".format(postgresql_user))
+        LOGGER.info("postgresql_jceks is - {}".format(postgresql_jceks))
+        LOGGER.info("postgresql_alias is - {}".format(postgresql_alias))
+        LOGGER.info("feed_name is - {}".format(feed_name))
+        LOGGER.info("loggedin_user is - {}".format(loggedin_user))
+        LOGGER.info("dbsuffix is - {}".format(dbsuffix))
+        LOGGER.info("standard_dbname is - {}".format(standard_dbname))
+        LOGGER.info("standard_tablename is - {}".format(standard_tablename))
+        LOGGER.info("data_node is - {}".format(data_node))
+        LOGGER.info("aws_path is - {}".format(aws_path))
+	LOGGER.info("queue_name is - {}".format(queue_name))
+
+        LOGGER.info("Conflict Resolution process is going to start on " + standard_dbname + "." + standard_tablename)
+
+        LOGGER.info("Spark and SQLContext creation Started..!!")
+        spark = SparkSession.builder.appName("Conflict_Resolution").config(conf=SparkConf()).getOrCreate()
+        sc = spark.sparkContext
+        sc._jsc.hadoopConfiguration().set("fs.s3a.multiobjectdelete.enable","false")
+        sc._jsc.hadoopConfiguration().set("fs.s3a.fast.upload","true")
+        sc._jsc.hadoopConfiguration().set("spark.sql.parquet.filterPushdown","true")
+        sc._jsc.hadoopConfiguration().set("spark.sql.parquet.mergeSchema","false")
+        sc._jsc.hadoopConfiguration().set("spark.hadoop.mapreduce.fileoutputcommitter.algorithm.version","2")
+        sc._jsc.hadoopConfiguration().set("spark.speculation","false")
+        sc._jsc.hadoopConfiguration().set("fs.s3a.security.credential.provider.path",aws_path)
+        sqlcontext = SparkSession(sc)
+        LOGGER.info("Spark and SQLContext are created Successfully..!!")
+
+        LOGGER.info("Moving to main method..!!")
+        main(spark,sqlcontext, postgresql_ip, postgresql_port, postgresql_user, postgresql_db, postgresql_jceks, postgresql_alias, feed_name, loggedin_user, standard_dbname, standard_tablename, data_node, queue_name)
+
+

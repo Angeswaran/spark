@@ -1,0 +1,50 @@
+from Custom_Logger import getLogger
+import psycopg2
+import sys
+global password
+global LOGGER
+LOGGER = getLogger('Create_targetview_LOGGER')
+
+
+'''
+This function is used to extracting password from JCEKS file
+'''
+def extractPasswordFromJceks(spark,jceksfile,password_alias):
+    global password
+    try:
+        LOGGER.info("Entered into extractPasswordFromJceks method")
+        LOGGER.info("Arguments passed to extractPasswordFromJceks are")
+        LOGGER.info("jceksfile is - {}".format(jceksfile))
+        LOGGER.info("password_alias is - {}".format(password_alias))        
+        config_jceks = spark.sparkContext._jsc.hadoopConfiguration()
+        config_jceks.set("hadoop.security.credential.provider.path",jceksfile)
+        temp = config_jceks.getPassword(password_alias) 
+        password = ""
+        for i in range(temp.__len__()):
+            password = password+str(temp.__getitem__(i))        
+        return password
+    except:
+        LOGGER.error("Error occured in extractPasswordFromJceks method due to {}".format(sys.exc_info()))
+    
+'''
+This method is used to establish the connection with PostgreSQL.
+'''
+def establishPostgreSQLConnection(spark, jceksfile, password_alias, user, host, port, database):
+    global password
+    try:
+        LOGGER.info("Entered into establishPostgreSQLConnection method")
+        LOGGER.info("Arguments passed to establishPostgreSQLConnection are")
+        LOGGER.info("jceksfile is - {}".format(jceksfile))
+        LOGGER.info("password_alias is - {}".format(password_alias))
+        LOGGER.info("user is - {}".format(user))
+        LOGGER.info("host is - {}".format(host))
+        LOGGER.info("port is - {}".format(port))
+        LOGGER.info("database is - {}".format(database))        
+        password = extractPasswordFromJceks(spark, jceksfile, password_alias)
+        LOGGER.info("password returned from extractPasswordFromJceks successfully..!!")
+        connection = psycopg2.connect(user = user, password = password, host = host, port = port, database = database)        
+        LOGGER.info("Postgresl connection created successfully with credentials..!!")        
+        return connection        
+    except (Exception, psycopg2.Error) as error :        
+        LOGGER.error("Error occured in establishPostgreSQLConnection method due to {} and - {}".format(sys.exc_info(), error))
+            

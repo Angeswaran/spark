@@ -1,0 +1,108 @@
+from pyspark import *
+import sys
+from datetime import datetime
+import pandas as pd
+from pyspark.sql import SparkSession
+from pyspark.sql import HiveContext
+import logging
+from os import *
+from pyspark.sql import Row
+from dateutil.relativedelta import *
+import smtplib
+import psycopg2
+from sqlalchemy import create_engine
+
+def extractPasswordFromJceks(spark,jceksfile,password_alias):
+    global password       
+    config_jceks = spark.sparkContext._jsc.hadoopConfiguration()
+    config_jceks.set("hadoop.security.credential.provider.path",jceksfile)
+    temp = config_jceks.getPassword(password_alias) 
+    password = ""
+    for i in range(temp.__len__()):
+        password = password+str(temp.__getitem__(i))        
+    return password
+
+def establishPostgreSQLConnection(spark, jceksfile, password_alias, user, host, port, database):
+    global password         
+    password = extractPasswordFromJceks(spark, jceksfile, password_alias)        
+    connection = psycopg2.connect(user = user, password = password, host = host, port = port, database = database)        
+    return connection        
+    
+def readStagingRecord(spark, jceksfile, password_alias, user, host, port, database, feed_name):
+	connection = establishPostgreSQLConnection(spark, jceksfile, password_alias, user, host, port, database)
+	cursor = connection.cursor()
+	cursor.execute("select file_name,feed_name,feed_data_owners_email,update_file_reminder from hba_metadata_feed_info where is_active = 1  and feed_name = '" + feed_name + "' ;")
+	rows = cursor.fetchall()
+	connection.close()
+	return rows
+
+def readIngestionDatetime(spark, sqlcontext ,refined_dbname, refined_table):
+    max_ingestion_dt_tm = sqlcontext.sql("select max(ingestion_dt_tm) from " + refined_dbname + "." + refined_table)
+    ingestion_dt_tm = max_ingestion_dt_tm.collect()[0][0]
+    return ingestion_dt_tm
+
+def readSegmentDetails(spark, sqlcontext ,foundation_dbname, foundation_viewname):
+    attribution_names = sqlcontext.sql("select distinct(attribution_name) from " + foundation_dbname + "." + foundation_viewname)
+    attribution_name = attribution_names.collect()[0][0]
+    attribution_name = attribution_name.replace(",",";")
+    return attribution_name
+
+def draft_message(data_Owner_email, feed_name, ingestion_datetime, file_name, update_file_reminder,attribution_name):
+    message = "This is an auto generated email for segment file owner : " + data_Owner_email + ". This is to notify the Segment : " + feed_name + " last loaded on " + ingestion_datetime + " from file " + file_name + " is more than " + update_file_reminder + " months old. Kindly provide the new file to make sure all downstream uses the updates segment information. Kindly reach out to ops team copied in email for additional information . Segment details - "+ attribution_name
+    return message
+
+def main(spark, sqlcontext, postgresql_ip, postgresql_port, postgresql_user, postgresql_db, postgresql_jceks, postgresql_alias, feed_name, loggedin_user, refined_dbname, refined_table,foundation_dbname, foundation_viewname):
+    list_metadata = []
+    list_metadata = readStagingRecord(spark, postgresql_jceks, postgresql_alias, postgresql_user, postgresql_ip, postgresql_port, postgresql_db, feed_name)
+
+    for row in list_metadata:
+        file_name = row[0]
+        feed_name = row[1]
+        data_Owner_email = row[2]
+        update_file_reminder = row[3]
+    data_Owner_email = "angeswaran.shanmugasundaram@abbvie.com"
+    attribution_name = readSegmentDetails(spark, sqlcontext ,foundation_dbname, foundation_viewname)
+    max_ingestion_dt_tm = readIngestionDatetime(spark, sqlcontext ,refined_dbname, refined_table)
+
+    max_ingestion_dt_tm_formated = datetime.strptime(max_ingestion_dt_tm, '%Y%m%d%H%M%S')
+
+    expected_reminder_date = max_ingestion_dt_tm_formated + relativedelta(months =+ int(update_file_reminder))
+
+    current_date = datetime.today().date()
+    expected_reminder_date = expected_reminder_date.date()
+    
+    if (current_date == expected_reminder_date):    
+        body_message = draft_message(data_Owner_email, feed_name, max_ingestion_dt_tm, file_name, update_file_reminder,attribution_name)    
+    else:
+        body_message = ''
+    return body_message,data_Owner_email
+
+if __name__=="__main__":
+    #Reading the parameters and calling main method
+    postgresql_ip = sys.argv[1]
+    postgresql_port = sys.argv[2]
+    postgresql_user = sys.argv[3]
+    postgresql_db = sys.argv[4]
+    postgresql_jceks = sys.argv[5]
+    postgresql_alias = sys.argv[6]
+    feed_name = sys.argv[7]
+    loggedin_user = sys.argv[8]
+    refined_dbname = sys.argv[9]
+    refined_table = sys.argv[10]
+    aws_path = sys.argv[13]
+    foundation_dbname = sys.argv[11] 
+    foundation_viewname = sys.argv[12]
+
+    spark = SparkSession.builder.appName("File_remainder_module").config(conf=SparkConf()).getOrCreate()
+    sc = spark.sparkContext
+    sc._jsc.hadoopConfiguration().set("fs.s3a.multiobjectdelete.enable","false")
+    sc._jsc.hadoopConfiguration().set("fs.s3a.fast.upload","true")
+    sc._jsc.hadoopConfiguration().set("spark.sql.parquet.filterPushdown","true")
+    sc._jsc.hadoopConfiguration().set("spark.sql.parquet.mergeSchema","false")
+    sc._jsc.hadoopConfiguration().set("spark.hadoop.mapreduce.fileoutputcommitter.algorithm.version","2")
+    sc._jsc.hadoopConfiguration().set("spark.speculation","false")
+    sc._jsc.hadoopConfiguration().set("fs.s3a.security.credential.provider.path",aws_path)
+    sqlcontext = SparkSession(sc)
+
+    message = main(spark, sqlcontext, postgresql_ip, postgresql_port, postgresql_user, postgresql_db, postgresql_jceks, postgresql_alias, feed_name, loggedin_user, refined_dbname, refined_table, foundation_dbname,foundation_viewname)
+    print(message)

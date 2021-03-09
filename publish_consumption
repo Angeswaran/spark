@@ -1,0 +1,269 @@
+#Importing the modules
+from pyspark import SparkContext
+from pyspark.sql import SQLContext
+from pyspark.sql import HiveContext
+import io
+import os
+import sys
+import subprocess
+from subprocess import *
+import commands
+import ConfigParser
+import StringIO
+from hdfs_exec import hdfs_exec
+from os import *
+from Custom_Logger import getLogger
+import target_viewname_creation as target_viewname_creation
+
+global LOGGER
+global table_name
+
+'''
+This method is used to perform invalidate metadata for the view.
+'''
+def invalidate_metadata(target_view_dbname,target_view_name,data_node):
+        global LOGGER
+        try:
+            query = "invalidate metadata {}".format(target_view_dbname + "." + target_view_name)
+            result_string = 'impala-shell -i '+ data_node +' -q "'+query+'"'
+            status, output = commands.getstatusoutput(result_string)
+            if status == 0:
+                    LOGGER.info("Invalidate metadata is done for the target view - {}".format(target_view_dbname + "." + target_view_name))
+            else:
+                    LOGGER.info("Error encountered while executing Invalidate metadata for the view {}".format(target_view_dbname + "." + target_view_name))
+                    sys.exit(1)
+        except:
+            LOGGER.info("Error occured in invalidate_metadata method, Error message is {}".format(sys.exc_info()))
+            LOGGER.info("Input parameters are target_view_dbname- {}, target_view_name - {}, data_node - {}".format(target_view_dbname,target_view_name,data_node))
+            sys.exit(1)
+
+'''
+This method is used to create Consumption view on top of Base view
+'''
+def create_consumption_view(sqlContext,data_node,consumption_db_name,consumption_view_name,source_view_dbname,source_view_name):
+        global LOGGER
+        consumption_query = ""
+        try:
+            #Creating the consumption view query
+            consumption_query = "create or replace view " + consumption_db_name + "." + consumption_view_name + " as select * from " + source_view_dbname + "." + source_view_name
+            LOGGER.info("consumption_query is " + consumption_query)
+
+            #Executing the view query using SQLContext
+            sqlContext.sql(consumption_query)
+        except:
+            LOGGER.info("Consumption view - '{0}' is not created due to the unexcepted error {1}".format(consumption_db_name + "." + consumption_view_name, sys.exc_info()))
+            sys.exit(1)
+        else:
+            LOGGER.info("Consumption view - '{}' is created Successfully..!!".format(consumption_db_name + "." + consumption_view_name))
+            invalidate_metadata(consumption_db_name,consumption_view_name,data_node)
+
+'''
+This method is used to read common properties file
+'''
+def read_common_property(sc,common_property):
+        global LOGGER
+        try:
+            common_properties = sc.textFile(common_property).collect()
+            buf = StringIO.StringIO("\n".join(common_properties))
+            properties = ConfigParser.ConfigParser()
+            properties.readfp(buf)
+            return properties
+        except:
+            LOGGER.info("Error occured in read_common_property method. please check logs for further debugging")
+            sys.exit(1)
+
+
+def main(common_config,consumption_config,dim_config):
+        global LOGGER
+        global target_view_dbname
+        global target_view_name
+        global source_db_name
+        global source_tablename
+        global source_tablename_alias
+        global consumption_db_name
+        global consumption_view_name
+        global source_columns
+        global source_columns_excluded
+        global where_condition
+        global dim_list
+        global table_name
+
+        #Initializing the logger and setting level information
+        try:
+            LOGGER = getLogger('Publish_consumption_LOGGER')
+        except:
+            LOGGER.info("Logger Initializing failed")
+            sys.exit(1)
+        else:
+            #Initializing Spark Context and SQLContext
+            try:
+                sc = SparkContext("yarn", "Publish Consumption")
+                hiveContext = HiveContext(sc)
+                sqlContext = SQLContext(sc)
+            except:
+                LOGGER.info("Spark initialization failed")
+                sys.exit(1)
+            else:
+                try:
+                    #Checking whether dimension config file exists or not
+                    LOGGER.info("common_config is {}".format(common_config))
+                    properties = common_properties = read_common_property(sc,common_config)
+                    data_node = properties.get("FileProperties","data_node")
+                    LOGGER.info("data_node is {}".format(data_node))
+                    #Checking whether dimension config file exists or not
+                    dim_config1 = hdfs_exec(dim_config)
+                    exec(dim_config1)
+                    #Checking whether consumption(Fact) config file exists or not
+                    consumption_config1 = hdfs_exec(consumption_config)
+                    exec(consumption_config1)
+                    LOGGER.info("Config files are executed successfully..!!")
+                except:
+                    LOGGER.info("Error occured while reading config files due to {}".format(sys.exc_info()))
+                    sys.exit(1)
+                else:
+                    consumption_db_name = ""
+                    consumption_view_name = ""
+                    source_view_dbname = ""
+                    source_view_name = ""
+                    try:
+                        table = consumption_config.split("/")
+                        table_name = table[len(table)-1].replace("_config.prm","")
+                        LOGGER.info("The processing table name is - {}".format(table_name))
+                        if((enable_Datatypecasting == "Y" and enable_Dimension_conformation == "Y") or (enable_Datatypecasting == "N" and enable_Dimension_conformation == "Y")):
+                            if(enable_Dim_Publish_Consumption == "Y"):
+                                LOGGER.info("Job is going to create Consumption view on top of the dimension conformation view..")
+                                LOGGER.info("Number of target view conformations are {}".format(len(target_view_conformation_list)))
+                                if(len(target_view_conformation_list) > 1):
+                                    for config in target_view_conformation_list:
+                                        if(config["consumption_db_name"] == ""):
+                                            LOGGER.info("Consumption db name is not configured")
+                                            sys.exit(1)
+                                        else:
+                                            consumption_db_name = config["consumption_db_name"]
+                                            LOGGER.info("consumption_db_name is {}".format(consumption_db_name))
+
+                                        if(config["consumption_view_name"] == ""):
+                                            LOGGER.info("Consumption view name is not configured")
+                                            sys.exit(1)
+                                        else:
+                                            consumption_view_name = config["consumption_view_name"]
+                                            LOGGER.info("consumption_view_name is {}".format(consumption_view_name))
+
+                                        if(config["target_view_dbname"] == ""):
+                                            LOGGER.info("Target db name is not configured")
+                                            sys.exit(1)
+                                        else:
+                                            source_view_dbname = config["target_view_dbname"]
+                                            LOGGER.info("source_view_dbname is {}".format(source_view_dbname))
+
+                                        if(config["target_view_name"] == ""):
+                                            LOGGER.info("Target view db name is not configured")
+                                            sys.exit(1)
+                                        else:
+                                            source_view_name = config["target_view_name"]
+                                            LOGGER.info("source_view_name is {}".format(source_view_name))
+
+                                        create_consumption_view(sqlContext,data_node,consumption_db_name,consumption_view_name,source_view_dbname,source_view_name)
+                                else:
+                                    if(publish_Consumption["targetdbname"] == ""):
+                                        if(properties.get("FileProperties","dc_consumption_db_name") == ""):
+                                            LOGGER.info("Consumption db name is not configured")
+                                            sys.exit(1)
+                                        else:
+                                            consumption_db_name = properties.get("FileProperties","dc_consumption_db_name")
+                                            LOGGER.info("consumption_db_name is {}".format(consumption_db_name))
+                                    else:
+                                        consumption_db_name = publish_Consumption["targetdbname"]
+                                        LOGGER.info("consumption_db_name is {}".format(consumption_db_name))
+
+                                    if(publish_Consumption["targetviewname"] == ""):
+                                        consumption_view_name = target_viewname_creation.createTargetViewName(dim_config, consumption_db_name, table_name)
+                                    else:
+                                        consumption_view_name = publish_Consumption["targetviewname"]
+                                        LOGGER.info("consumption_view_name is {}".format(consumption_view_name))
+
+                                    if(target_view_conformation1["target_view_dbname"] == ""):
+                                        if(properties.get("FileProperties","dc_target_view_dbname") == ""):
+                                            LOGGER.info("Consumption target db name is not configured")
+                                            sys.exit(1)
+                                        else:
+                                            source_view_dbname = properties.get("FileProperties","dc_target_view_dbname")
+                                            LOGGER.info("source_view_dbname is {}".format(source_view_dbname))
+                                    else:
+                                        source_view_dbname = target_view_conformation1["target_view_dbname"]
+                                        LOGGER.info("source_view_dbname is {}".format(source_view_dbname))
+
+                                    if(target_view_conformation1["target_view_name"] == ""):
+                                        source_view_name = target_viewname_creation.createTargetViewName(dim_config, source_view_dbname, table_name)
+                                        LOGGER.info("source_view_name is {}".format(source_view_name))
+                                    else:
+                                        source_view_name = target_view_conformation1["target_view_name"]
+                                        LOGGER.info("source_view_name is {}".format(source_view_name))
+
+                                    create_consumption_view(sqlContext,data_node,consumption_db_name,consumption_view_name,source_view_dbname,source_view_name)
+                            else:
+                                LOGGER.info("There is no consumption required since 'enable_Dim_Publish_Consumption' flag set to 'N'")
+                                sys.exit(0)
+
+                        elif(enable_Datatypecasting == "Y" and enable_Dimension_conformation == "N"):
+                            LOGGER.info("Job is going to create Consumption view on top of the datatype casting view..")
+                            if(enable_publish_Consumption == "Y"):
+                                if(publish_Consumption["targetdbname"] == ""):
+                                    if(properties.get("FileProperties","dc_consumption_db_name") == ""):
+                                        LOGGER.info("Consumption db name is not configured")
+                                        sys.exit(1)
+                                    else:
+                                        consumption_db_name = properties.get("FileProperties","dc_consumption_db_name")
+                                        LOGGER.info("consumption_db_name is {}".format(consumption_db_name))
+                                else:
+                                    consumption_db_name = publish_Consumption["targetdbname"]
+                                    LOGGER.info("consumption_db_name is {}".format(consumption_db_name))
+
+                                if(publish_Consumption["targetviewname"] == ""):
+                                    consumption_view_name = target_viewname_creation.createTargetViewName(dim_config, consumption_db_name, table_name)
+                                    LOGGER.info("consumption_view_name is {}".format(consumption_view_name))
+                                else:
+                                    consumption_view_name = publish_Consumption["targetviewname"]
+                                    LOGGER.info("consumption_view_name is {}".format(consumption_view_name))
+
+                                if(TypeCasting["targetdbname"] == ""):
+                                    if(properties.get("FileProperties","typecast_target_db_name") == ""):
+                                        LOGGER.info("Consumption target db name is not configured")
+                                        sys.exit(1)
+                                    else:
+                                        source_view_dbname = properties.get("FileProperties","typecast_target_db_name")
+                                        LOGGER.info("source_view_dbname is {}".format(source_view_dbname))
+                                else:
+                                    source_view_dbname = TypeCasting["targetdbname"]
+                                    LOGGER.info("source_view_dbname is {}".format(source_view_dbname))
+
+                                if(TypeCasting["targetviewname"] == ""):
+                                    source_view_name = target_viewname_creation.createTargetViewName(dim_config, source_view_dbname, table_name)
+                                    LOGGER.info("source_view_name is {}".format(source_view_name))
+                                else:
+                                    source_view_name = TypeCasting["targetviewname"]
+                                    LOGGER.info("source_view_name is {}".format(source_view_name))
+
+                                create_consumption_view(sqlContext,data_node,consumption_db_name,consumption_view_name,source_view_dbname,source_view_name)
+
+                            else:
+                                LOGGER.info("There is no consumption required since 'enable_publish_Consumption' flag set to 'N'")
+                                sys.exit(0)
+                    except:
+                        LOGGER.info("Publish consumption job is failed for the table - {0} - Error detail is {1}".format(table_name, sys.exc_info()))
+                        sys.exit(1)
+                    else:
+                        LOGGER.info("Publish_consumption_is_completed_successfully for the table - {}".format(table_name))
+                        sys.exit(0)
+
+if __name__ == "__main__":
+        #Checking whether no of arguments are passed to this program or not
+        if(len(sys.argv) < 4):
+            print("Required arguments are not passed to the program. please check.")
+            sys.exit(1)
+        else:
+            #Reading the parameters and calling main method
+            common_config = sys.argv[1]
+            consumption_config = sys.argv[2]
+            dim_config = sys.argv[3]
+            main(common_config,consumption_config,dim_config)

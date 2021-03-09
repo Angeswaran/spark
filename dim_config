@@ -1,0 +1,191 @@
+src_system_name = {
+        "dim_columnname"        : "AbbVie_iRep",
+        "dim_columnname_alias"  : "src_system_name",
+        "join"                  : "",
+        "table_name"            : "",
+        "alias_name"            : ""
+}
+time_period_id = {
+        "dim_columnname"        : "time_period_id",
+        "dim_columnname_alias"  : "time_period_id",
+        "join"                  : "left outer join",
+        "table_name"            : "abv_hcp360_integrated_work.hcp360_time_period_vw",
+        "alias_name"            : "time"
+}
+dds_mdm_product_identifier = {
+        "dim_columnname"        : "abbott_product_id",
+        "dim_columnname_alias"  : "dds_mdm_product_identifier",
+        "join"                  : "left outer join",
+        "table_name"            : "abv_hcp360_integrated_work.hcp360_irep_product_vw",
+        "alias_name"            : "prodxref"
+}
+dds_km_mdm_product_identifier = {
+        "dim_columnname"        : "abbott_product_id",
+        "dim_columnname_alias"  : "dds_km_mdm_product_identifier",
+        "join"                  : "left outer join",
+        "table_name"            : "abv_hcp360_integrated_work.hcp360_irep_product_vw",
+        "alias_name"            : "prodxref"
+}
+irep_product = {
+        "dim_columnname"        : "",
+        "dim_columnname_alias"  : "",
+        "join"                  : "left outer join",
+        "table_name"            : "abv_hcp360_irep_mgmt_refined.product_vod__c_ref",
+        "alias_name"            : "irep_prod"
+}
+irep_multichannel_activity = {
+        "dim_columnname"        : "product_code_abv__c",
+        "dim_columnname_alias"  : "dds_mdm_product_identifier",
+        "join"                  : "",
+        "table_name"            : "",
+        "alias_name"            : "fact"
+}
+abbott_customer_id = {
+        "dim_columnname"        : "abbott_customer_id",
+        "dim_columnname_alias"  : "abbott_customer_id",
+        "join"                  : "left outer join",
+        "table_name"            : "(select distinct loser_data_src_id, abbott_customer_id from abv_hcp360_integrated_work.hcp360_hcp_profile_id_xref_vw)",
+        "alias_name"            : "cusxref"
+}
+from_abbott_customer_id = {
+        "dim_columnname"        : "abbott_customer_id",
+        "dim_columnname_alias"  : "from_abbott_customer_id",
+        "join"                  : "left outer join",
+        "table_name"            : "(select distinct loser_data_src_id, abbott_customer_id from abv_hcp360_integrated_work.hcp360_hcp_profile_id_xref_vw)",
+        "alias_name"            : "from_cusxref"
+}
+to_abbott_customer_id = {
+        "dim_columnname"        : "abbott_customer_id",
+        "dim_columnname_alias"  : "to_abbott_customer_id",
+        "join"                  : "left outer join",
+        "table_name"            : "(select distinct loser_data_src_id, abbott_customer_id from abv_hcp360_integrated_work.hcp360_hcp_profile_id_xref_vw)",
+        "alias_name"            : "to_cusxref"
+}
+parent_abbott_customer_id = {
+        "dim_columnname"        : "abbott_customer_id",
+        "dim_columnname_alias"  : "parent_abbott_customer_id",
+        "join"                  : "left outer join",
+        "table_name"            : "(select distinct loser_data_src_id, abbott_customer_id from abv_hcp360_integrated_work.hcp360_hcp_profile_id_xref_vw)",
+        "alias_name"            : "parent_cusxref"
+}
+child_abbott_customer_id = {
+        "dim_columnname"        : "abbott_customer_id",
+        "dim_columnname_alias"  : "child_abbott_customer_id",
+        "join"                  : "left outer join",
+        "table_name"            : "(select distinct loser_data_src_id, abbott_customer_id from abv_hcp360_integrated_work.hcp360_hcp_profile_id_xref_vw)",
+        "alias_name"            : "child_cusxref"
+}
+preferred_abbott_customer_id = {
+        "dim_columnname"        : "abbott_customer_id",
+        "dim_columnname_alias"  : "preferred_abbott_customer_id",
+        "join"                  : "left outer join",
+        "table_name"            : "(select distinct loser_data_src_id, abbott_customer_id from abv_hcp360_integrated_work.hcp360_hcp_profile_id_xref_vw)",
+        "alias_name"            : "preferred_cusxref"
+}
+abbott_account_id = {
+        "dim_columnname"        : "party_id",
+        "dim_columnname_alias"  : "abbott_account_id",
+        "join"                  : "left outer join",
+        "table_name"            : "abv_hcp360_integrated_work.hcp360_dal_hci_sfa_id_xref_vw",
+        "alias_name"            : "accxref"
+}
+from_abbott_account_id = {
+        "dim_columnname"        : "party_id",
+        "dim_columnname_alias"  : "from_abbott_account_id",
+        "join"                  : "left outer join",
+        "table_name"            : "abv_hcp360_integrated_work.hcp360_dal_hci_sfa_id_xref_vw",
+        "alias_name"            : "from_accxref"
+}
+to_abbott_account_id = {
+        "dim_columnname"        : "party_id",
+        "dim_columnname_alias"  : "to_abbott_account_id",
+        "join"                  : "left outer join",
+        "table_name"            : "abv_hcp360_integrated_work.hcp360_dal_hci_sfa_id_xref_vw",
+        "alias_name"            : "to_accxref"
+}
+parent_abbott_account_id = {
+        "dim_columnname"        : "party_id",
+        "dim_columnname_alias"  : "parent_abbott_account_id",
+        "join"                  : "left outer join",
+        "table_name"            : "abv_hcp360_integrated_work.hcp360_dal_hci_sfa_id_xref_vw",
+        "alias_name"            : "parent_accxref"
+}
+child_abbott_account_id = {
+        "dim_columnname"        : "party_id",
+        "dim_columnname_alias"  : "child_abbott_account_id",
+        "join"                  : "left outer join",
+        "table_name"            : "abv_hcp360_integrated_work.hcp360_dal_hci_sfa_id_xref_vw",
+        "alias_name"            : "child_accxref"
+}
+preferred_abbott_account_id = {
+        "dim_columnname"        : "party_id",
+        "dim_columnname_alias"  : "preferred_abbott_account_id",
+        "join"                  : "left outer join",
+        "table_name"            : "abv_hcp360_integrated_work.hcp360_dal_hci_sfa_id_xref_vw",
+        "alias_name"            : "preferred_accxref"
+}
+abv_hcp360_irep_mgmt                 = {
+        "add_prefix"            : "",
+        "add_suffix"            : "",
+        "replace_prefix"        :       {
+
+                                                                        },
+        "replace_suffix"        :   {
+                                                                                "ref" : "vw"
+                                                                        },
+        "replace_keyword"       :       {
+
+                                                                        }
+}
+abv_hcp360_integrated_work = {
+        "add_prefix"            : "irep_",
+        "add_suffix"            : "",
+        "replace_prefix"        :       {
+
+                                                                        },
+        "replace_suffix"        :       {
+                                                                                "ref" : "vw"
+                                                                        },
+        "replace_keyword"       :       {
+
+                                                                        }
+}
+abv_hcp360_integrated = {
+        "add_prefix"            : "irep_",
+        "add_suffix"            : "",
+        "replace_prefix"        :       {
+
+                                                                        },
+        "replace_suffix"        :       {
+                                                                                "ref" : "vw"
+                                                                        },
+        "replace_keyword"       :       {
+
+                                                                        }
+}
+abv_hcp360_integrated_gm_work = {
+        "add_prefix"            : "irep_",
+        "add_suffix"            : "",
+        "replace_prefix"        :       {
+
+                                                                        },
+        "replace_suffix"        :       {
+                                                                                "ref" : "vw"
+                                                                        },
+        "replace_keyword"       :       {
+
+                                                                        }
+}
+abv_hcp360_integrated_gm = {
+        "add_prefix"            : "irep_",
+        "add_suffix"            : "",
+        "replace_prefix"        :       {
+
+                                                                        },
+        "replace_suffix"        :       {
+                                                                                "ref" : "vw"
+                                                                        },
+        "replace_keyword"       :       {
+
+                                                                        }
+}

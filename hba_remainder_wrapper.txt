@@ -1,0 +1,104 @@
+#! /bin/bash
+
+if [ $# -ne 8 ]; then
+        echo "Incorrect number of arguments are passed. so exit from the process."
+        exit 1
+else
+        echo "expected number of arguments are passed. Good to go..!"
+fi
+
+#Reading the arguments
+PARAM_FILE=$1
+COMMON_PROPERTY_FILE_PATH=$2
+FEED_NAME=$3
+REFINED_DB=$4
+REFINED_TABLE=$5
+FOUNDATION_DB=$6
+FOUNDATION_VW=$7
+aws_path=$8
+
+echo "PARAM_FILE is - ${PARAM_FILE}"
+echo "COMMON_PROPERTY_FILE_PATH is - ${COMMON_PROPERTY_FILE_PATH}"
+echo "FEED_NAME is - ${FEED_NAME}"
+echo "REFINED DB NAME IS - ${REFINED_DB}"
+echo "REFINED TABLE NAME IS - ${REFINED_TABLE}"
+echo "AWS_PATH NAME IS - ${aws_path}"
+echo "FOUNDATION DB NAME IS - ${FOUNDATION_DB}"
+echo "FOUNDATION VIEW NAME IS - ${FOUNDATION_VW}"
+
+
+#Source the common property file
+. ${COMMON_PROPERTY_FILE_PATH}
+
+if [ "$?" != "0" ]; then
+    echo "${COMMON_PROPERTY_FILE_PATH} is not sourced properly. Please check."
+    exit 1
+else
+    echo "${COMMON_PROPERTY_FILE_PATH} is sourced successfully..!! Good to Go..!!"
+fi
+
+echo "keyTabName is - " ${keyTabName}
+echo "KeyTabPricipal is - " ${KeyTabPricipal}
+
+#Kerberos Initialization
+kinit -kt ${keyTabName} ${KeyTabPricipal}
+
+if [ "$?" != "0" ]; then
+    echo "Kerberos Authorization Failed"
+    exit 1
+else
+    echo "Kerberos Authorization Successful"
+fi
+
+USER=`printenv HCP360_USER`
+QUEUE_NAME=`printenv HCP360_QUEUE_NAME`
+DBSUFFIX=`printenv HCP360_DBSUFFIX`
+
+echo "USER is - ${USER}"
+echo "QUEUE_NAME is - ${QUEUE_NAME}"
+echo "DBSUFFIX is - ${DBSUFFIX}"
+
+DBSUFFIX_ACTUAL=${DBSUFFIX}
+DBSUFFIX=dbsuffix${DBSUFFIX_ACTUAL}
+echo "DBSUFFIX value is "${DBSUFFIX}
+
+POSTGRESQL_IP=`hdfs dfs -cat $PARAM_FILE | grep "POSTGRESQL_IP=" | cut -d "=" -f 2`
+POSTGRESQL_PORT=`hdfs dfs -cat $PARAM_FILE | grep "POSTGRESQL_PORT=" | cut -d "=" -f 2`
+POSTGRESQL_USER=`hdfs dfs -cat $PARAM_FILE | grep "POSTGRESQL_USER=" | cut -d "=" -f 2`
+POSTGRESQL_DB=`hdfs dfs -cat $PARAM_FILE | grep "POSTGRESQL_DB=" | cut -d "=" -f 2`
+POSTGRESQL_JCEKS=`hdfs dfs -cat $PARAM_FILE | grep "POSTGRESQL_JCEKS=" | cut -d "=" -f 2`
+POSTGRESQL_ALIAS=`hdfs dfs -cat $PARAM_FILE | grep "POSTGRESQL_ALIAS=" | cut -d "=" -f 2`
+
+echo "INFO: POSTGRESQL_IP is - $POSTGRESQL_IP "
+echo "INFO: POSTGRESQL_PORT is - $POSTGRESQL_PORT "
+echo "INFO: POSTGRESQL_USER is - $POSTGRESQL_USER "
+echo "INFO: POSTGRESQL_DB is - $POSTGRESQL_DB "
+echo "INFO: POSTGRESQL_JCEKS is - ${POSTGRESQL_JCEKS}"
+echo "INFO: POSTGRESQL_ALIAS is - ${POSTGRESQL_ALIAS}"
+
+DATE=`date +%Y-%m-%d`
+
+PROCESS_START_TIME=`date +'%Y-%m-%d %H:%M:%S'`
+
+echo "spark2-submit --master ${master} --deploy-mode ${deploy_mode} --num-executors ${std_num_executors} --executor-cores ${std_executor_cores} --executor-memory ${std_executor_memory} --driver-memory ${std_driver_memory} --queue ${QUEUE_NAME} ${remainder_python_file} ${POSTGRESQL_IP} ${POSTGRESQL_PORT} ${POSTGRESQL_USER} ${POSTGRESQL_DB} ${POSTGRESQL_JCEKS} ${POSTGRESQL_ALIAS} ${FEED_NAME} ${USER} ${REFINED_DB} ${REFINED_TABLE} ${FOUNDATION_DB} ${FOUNDATION_VW} jceks://hdfs/$aws_path "
+
+output=`spark2-submit --master ${master} --deploy-mode ${deploy_mode} --num-executors ${std_num_executors} --executor-cores ${std_executor_cores} --executor-memory ${std_executor_memory} --driver-memory ${std_driver_memory} --queue ${QUEUE_NAME} ${remainder_python_file} ${POSTGRESQL_IP} ${POSTGRESQL_PORT} ${POSTGRESQL_USER} ${POSTGRESQL_DB} ${POSTGRESQL_JCEKS} ${POSTGRESQL_ALIAS} ${FEED_NAME} ${USER} ${REFINED_DB} ${REFINED_TABLE} ${FOUNDATION_DB} ${FOUNDATION_VW} jceks://hdfs/$aws_path`
+echo ${output}
+content=`echo ${output} | sed -e 's/^..//' -e 's/.$//'`
+msg=`echo $content | awk {'split($0,a,","); print a[1]}' | sed -e 's/^.//' -e 's/.$//'`
+ccmail=`echo $content | awk {'split($0,a,","); print a[2]}' | sed -e 's/^..//' -e 's/.$//'`
+
+if [[ $msg == This* ]]; then
+	echo "${msg}" | mailx -s "Auto Email: Segment ${FEED_NAME} ageing report" -c $ccmail $tomail
+        echo "Remainder email has been sent successfully..!!"
+        exit 0
+elif [[ "$msg" == "" ]]; then
+	echo "Remainder date is not today for feed name - ${FEED_NAME}"
+	exit 1	
+else
+	echo "Error: File remainder process is failed for the feed - ${FEED_NAME}, Please check the log file for further debugging"
+	exit 1
+fi
+
+PROCESS_END_TIME=`date +'%Y-%m-%d %H:%M:%S'`
+

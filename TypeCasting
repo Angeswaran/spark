@@ -1,0 +1,222 @@
+from pyspark.sql import SQLContext
+from pyspark.sql import HiveContext
+from pyspark.sql import SparkSession
+import sys
+from pyspark import SparkConf, SparkContext
+from collections import OrderedDict
+import pyspark.sql.catalog
+from datetime import datetime
+import pydoop.hdfs as hdfs
+import StringIO
+import ConfigParser
+from hdfs_exec import hdfs_exec
+import commands
+from os import *
+from Custom_Logger import getLogger
+from target_viewname_creation import createTargetViewName as target_viewname_creation
+
+#Definition to convert input column from config file to respective datatype
+def convert_to_timestamp(in_col):
+        LOGGER.info('Column '+in_col+' typecasting to timestamp')
+        op_col = 'CAST('+in_col+' as TIMESTAMP) as '+ in_col
+        return op_col
+
+def column_typeCast(in_col, datatype):
+        op_col = 'CAST('+in_col+' as '+datatype+') as '+ in_col
+        return op_col
+
+def convert_to_int(in_col):
+        LOGGER.info('Column '+in_col+' typecasting to int')
+        op_col = 'CAST('+in_col+' as INT) as '+ in_col
+        return op_col
+
+def convert_to_double(in_col):
+        LOGGER.info('Column '+in_col+' typecasting to double')
+        op_col = 'CAST('+in_col+' as DOUBLE) as '+ in_col
+        return op_col
+
+def convert_to_string(in_col):
+        op_col = 'CAST('+in_col+' as STRING) as '+in_col
+        return op_col
+
+def convert_to_decimal(in_col,datatype):
+        LOGGER.info('Column '+m+' type to Decimal')
+        op_col = 'CAST('+in_col+' as \\'+datatype+') as '+in_col
+        return op_col
+
+#This function handles dedupe logic based on the flag set in config file and dedupe columns configured in config file
+def dedupe(partition_by_col,order_by_col,src_db_name,src_tbl_name):
+        op_col = 'ROW_NUMBER() OVER (PARTITION BY '+partition_by_col+' ORDER BY FROM_UNIXTIME(UNIX_TIMESTAMP('+order_by_col+',\'yyyy-MM-dd HH:mm:ss\'),\'yyyy-MM-dd HH:mm:ss\') DESC) AS row_num FROM '+src_db_name+'.'+src_tbl_name+')a WHERE row_num = 1'
+        return op_col
+
+#Parse the common property file
+def loadProperties(propertyFilePath):
+        common_properties = spark.sparkContext.textFile(propertyFilePath).collect()
+        buf = StringIO.StringIO("\n".join(common_properties))
+        config = ConfigParser.ConfigParser()
+        config.readfp(buf)
+        propItems = OrderedDict(config.items("FileProperties"))
+        return propItems
+
+#Invalidate the metadata, accepts two argument the db name and view name
+def tableInvalidate(db_name,view_name):
+        try:
+                query = "invalidate metadata {}".format(db_name + "." + view_name)
+                result_string = 'impala-shell -i {} -q "{}"'.format(data_node,query)
+                status, output = commands.getstatusoutput(result_string)
+                if status == 0:
+                                LOGGER.info("Invalidate metadata is done for the target view - {}".format(db_name + "." + view_name))
+                else:
+                                LOGGER.info("Error encountered while executing Invalidate metadata for the view {}".format(db_name + "." + view_name))
+        except:
+                LOGGER.error("Error occured in invalidate_metadata method, Error message is {}".format(sys.exc_info()))
+                sys.exit(1)
+
+#To retrieve the DB name, if the DB name is blank in table's config file i.e the priority file it will read the DB name which is configured in the common config file
+def get_DbName(priority_obj, secondary_obj):
+        if(priority_obj != ''):
+                db_name = priority_obj
+                LOGGER.info('DB Name set in table config file {} '.format(db_name))
+        else:
+                db_name = secondary_obj
+                LOGGER.info('DB Name is not configured in table config, using the default DB name from common config {}'.format(db_name))
+        return db_name
+
+#exec_and_assign definition accepts the configuation file executes and assigns the configuration parameters to local variables
+def exec_and_assign(dim_file,file_path,common_config):
+        #Declarng global variables
+        global src_db_name
+        global col_list
+        global src_tbl_name
+        global target_db_name
+        global target_view_name
+        global dedupe_flag
+        global dedupe_col
+        global src_col_list
+        global data_node
+        global dim_file_config
+        global typecast_config
+        global common_config_file
+        try:
+                dim_file_config = hdfs_exec(dim_file)
+                exec(dim_file_config)
+                typecast_config = hdfs_exec(file_path)
+                exec(typecast_config)
+                print('Typecast source db name '+TypeCasting['sourcedbname'])
+                common_config_file = loadProperties(common_config)
+                data_node = common_config_file['data_node']
+                src_db_name = get_DbName(TypeCasting['sourcedbname'],common_config_file['typecast_source_db_name'])
+                #Map the elements in config file
+                if(TypeCasting['columnlist'] != ''):
+                        col_list = TypeCasting['columnlist']
+                        LOGGER.info('Column List Path is {}'.format(col_list))
+                else:
+                        LOGGER.error('Column List Path is empty')
+                src_tbl_name = TypeCasting['sourcetablename']
+                LOGGER.info('Source Table  Name is  {}'.format(src_tbl_name))
+                target_db_name = get_DbName(TypeCasting['targetdbname'],common_config_file['typecast_target_db_name'])
+                if(TypeCasting['targetviewname'] != ''):
+                        LOGGER.info('target view name: {}'.format(TypeCasting['targetviewname']))
+                        target_view_name = TypeCasting['targetviewname']
+                else:
+                        try:
+                                target_view_name=target_viewname_creation(dim_file,target_db_name,src_tbl_name)
+                        except:
+                                print(sys.exc_info())
+                                sys.exit(1)
+                dedupe_flag = Dedupe['dedupeflag']
+                dedupe_col = Dedupe['dedupecolumns']
+                #Check if the src table exists
+                if(spark.catalog._jcatalog.tableExists(src_db_name+'.'+src_tbl_name)):
+                        src_col_list = sqlContext.table(src_db_name+'.'+src_tbl_name)
+                else:
+                        LOGGER.error('{} does not exists in  {}'.format(src_tbl_name,src_db_name))
+                        sys.exit(1)
+        except NameError:
+            LOGGER.error(sys.exc_info())
+            sys.exit(1)
+
+#Main Function:
+#1. This reads the columlist file from config file, returns a dict object with column name as and datatype as value
+#2. The loop tries to match the column within paramlist key with src column names and if the data is either Timestamp , Double ,Int or decimal the respective defination iis called by the passing the param key object and it is appened to tyepcast_df variable
+#3. Based on the dedupe flag value
+#4. The typecast_df is used to create the typecasted view
+def main():
+        LOGGER.info('Source Column Names ')
+        src_col_names = src_col_list.schema.names
+        src_col_dict= OrderedDict(src_col_list.dtypes)
+        paramlist=OrderedDict()
+        try:
+                with hdfs.open(col_list, 'r') as column_list:
+                        line= column_list.read()
+                        for k,v in (element.split(',',1) for element in line.split()):
+                                paramlist[k.strip()] = v.strip()
+        except IOError:
+                LOGGER.error("Could not find file or read data")
+                sys.exit(1)
+        except ValueError:
+                LOGGER.error("too many values to unpack")
+                sys.exit(1)
+        except:
+                print(sys.exc_info())
+                sys.exit(1)
+        else:
+                tyepcast_df='CREATE OR REPLACE VIEW '+target_db_name+'.'+target_view_name+' AS SELECT '+', '.join(src_col_names)+' FROM (SELECT '
+                try:
+                        for m,n in src_col_dict.items():
+                                if paramlist.get(m) == 'double':
+                                        tyepcast_df += convert_to_double(m)+','
+                                elif paramlist.get(m) == 'int':
+                                        tyepcast_df += convert_to_int(m)+','
+                                elif paramlist.get(m) == 'timestamp':
+                                        tyepcast_df += convert_to_timestamp(m)+','
+                                elif paramlist.get(m) is None:
+                                        LOGGER.info('Column '+m+' as in source')
+                                        tyepcast_df += column_typeCast(m,n)+','
+                                elif paramlist.get(m) == 'Decimal*':
+                                        tyepcast_df += convert_to_decimal(m,paramlist.get(m))+','
+                                else:
+                                        LOGGER.info('Column '+m+' typecasting to '+paramlist.get(m))
+                                        tyepcast_df += column_typeCast(m,paramlist.get(m))+','
+                except KeyError:
+                        LOGGER.error("Key Not found: {}".format(m))
+                else:
+                        try:
+                                if dedupe_flag!='Y':
+                                        LOGGER.info('No dedupe required')
+                                        tyepcast_df = tyepcast_df.rstrip(',')+' FROM '+src_db_name+'.'+src_tbl_name+' )a'
+                                else:
+                                        LOGGER.info('DEDUPE flag is Y')
+                                        partition_col,order_by_col = dedupe_col.strip().split(',')
+                                        tyepcast_df =tyepcast_df+' '+dedupe(partition_col,order_by_col,src_db_name,src_tbl_name)
+                                LOGGER.info('Creating the {} view in {} Hive DB'.format(target_view_name,target_db_name))
+                                sqlContext.sql(tyepcast_df)
+                                tableInvalidate(target_db_name,target_view_name)
+                        except:
+                                print(sys.exc_info())
+                                sys.exit(1)
+                        else:
+                                LOGGER.info("Datatypecasting is completed successfully")
+                                sys.exit(0)
+
+if __name__=="__main__":
+        global spark
+        spark = SparkSession.builder.appName("Dynamic DataType Casting").config(conf=SparkConf()).getOrCreate()
+        hiveContext = HiveContext(spark)
+        sqlContext = SQLContext(spark)
+        typecast_config=''
+        LOGGER = getLogger('TYPE_CASTING_LOGGER')
+        LOGGER.info('Data Type Casting Started')
+        try:
+                file_path = sys.argv[1]
+                dim_file = sys.argv[2]
+                common_config = sys.argv[3]
+                LOGGER.info(file_path)
+        except IndexError:
+                LOGGER.error('missing the required config arguments')
+                #print(sys.exit(1))
+                sys.exit(1)
+        else:
+                exec_and_assign(dim_file,file_path,common_config)
+                LOGGER.info('Calling Main function ')
+                main()

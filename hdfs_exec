@@ -1,0 +1,10 @@
+import pydoop.hdfs as hdfs
+import sys
+
+def hdfs_exec(file):
+        global file_read
+        a = {}
+        if hdfs.path.exists(file):
+                with hdfs.open(file) as f:
+                        file_read = f.read()
+        return file_read

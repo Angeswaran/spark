@@ -1,0 +1,974 @@
+from pyspark import *
+import sys
+import os
+import io
+from datetime import datetime
+import psycopg2
+import pandas as pd
+import sqlalchemy
+import json
+from sqlalchemy import create_engine
+from pandas import DataFrame
+import hashlib
+from hashlib import sha256
+import logging
+from Custom_Logger import getLogger
+from pyspark import *
+from pyspark.sql import SparkSession
+from pyspark.sql import HiveContext
+from pyspark.sql.functions import expr, current_timestamp, lit, concat_ws, coalesce
+from pyspark.sql import *
+from pyspark.sql import Row
+from pyspark.sql.functions import monotonically_increasing_id, row_number
+from pyspark.sql.window import Window
+import target_viewname_creation as target_viewname_creation_dim
+import getPropertyValues as getProperty
+from hdfs_exec import hdfs_exec
+from pyspark.sql.types import StructType,StructField, StringType
+import commands
+from collections import OrderedDict
+
+
+global LOGGER
+global file_name
+global profile_type
+global data_source_id
+global dataset_name
+global src_franchise_column_name
+global src_brand_column_name
+global src_indication_column_name
+global src_branded_unbranded_column_name
+global feed_data_owners_email
+global src_cateogry_column_name
+global src_cateogry_value_column_name
+global frequency
+global data_source_name
+global vendor_name
+global src_attribution_effective_date_column
+global feed_attribution_effective_date_logic
+global final_query
+final_query = ""
+global attr_dict
+attr_dict = OrderedDict()
+
+def extractPasswordFromJceks(spark,jceksfile,password_alias):
+    global password
+    try:
+        config_jceks = spark.sparkContext._jsc.hadoopConfiguration()
+        config_jceks.set("hadoop.security.credential.provider.path",jceksfile)
+        temp = config_jceks.getPassword(password_alias)
+        password = ""
+        for i in range(temp.__len__()):
+            password = password+str(temp.__getitem__(i))
+        return password
+    except:
+        LOGGER.error("Error occured in extractPasswordFromJceks method due to {}".format(sys.exc_info()))
+
+def establishPostgreSQLConnection(spark, jceksfile, password_alias, user, host, port, database):
+    global LOGGER
+    try:
+        #connection = psycopg2.connect(user = "svc_lc_cdlh_d_hcp360", password = "1WTIcb8Fl@sn", host = "10.74.230.113", port = "5432", database = "abv_hcp360_hba")
+        password = extractPasswordFromJceks(spark, jceksfile, password_alias)
+        connection = psycopg2.connect(user = user, password = password, host = host, port = port, database = database)
+        return connection
+    except (Exception, psycopg2.Error) as error :
+        LOGGER.info("Error while connecting to PostgreSQL", error)
+
+def readStagingRecord(spark, jceksfile, password_alias, user, host, port, database, feed_name):
+    global LOGGER
+    try:
+        LOGGER.info("Entered into readStagingRecord method")
+        connection = establishPostgreSQLConnection(spark, jceksfile, password_alias, user, host, port, database)
+        LOGGER.info("Postgresql Connection established successfully..!!")
+        cursor = connection.cursor()
+        cursor.execute("select feed.file_name,feed.feed_name,feed.profile_type,feed.data_source_id,feed.dataset_name,attr.src_franchise_column_name,attr.src_brand_column_name,attr.src_indication_column_name,attr.src_branded_unbranded_column_name,feed.feed_data_owners_email,attr.src_cateogry_column_name,attr.src_cateogry_value_column_name,feed.frequency,feed.data_source_name,feed.vendor_name,attr.src_attribution_effective_date_column,attr.feed_attribution_effective_date_logic, attr.src_columnlist_attributiondata, attr.attributionvalue_translation, attr.additional_attributes, feed.src_refresh_type_column from hba_metadata_feed_info feed inner join hba_metadata_attribute_info attr on feed.feed_name = attr.feed_name where feed.is_active = 1 and attr.is_active = 1 and feed.feed_name = '" + feed_name + "' ;")
+        rows = cursor.fetchall()
+        connection.close()
+        return rows
+    except:
+        LOGGER.error("Error occured in readStagingRecord method due to {}".format(sys.exc_info()))
+
+'''
+This method is used to perform invalidate metadata for the view.
+'''
+def invalidate_metadata(consolidated_dbname,consolidated_tablename,data_node):
+    global LOGGER
+    try:
+        query = "invalidate metadata {}".format(consolidated_dbname + "." + consolidated_tablename)
+        result_string = 'impala-shell -i '+ data_node +' -q "'+query+'"'
+        status, output = commands.getstatusoutput(result_string)
+        if status == 0:
+            LOGGER.info("Invalidate metadata is done for the target view - {}".format(consolidated_dbname + "." + consolidated_tablename))
+        else:
+            LOGGER.info("Error encountered while executing Invalidate metadata for the view {}".format(consolidated_dbname + "." + consolidated_tablename))
+
+    except:
+        LOGGER.error("Error occured in invalidate_metadata method, Error message is {}".format(sys.exc_info()))
+        LOGGER.error("Input parameters are consolidated_dbname- {}, consolidated_tablename - {}, data_node - {}".format(consolidated_dbname,consolidated_tablename,data_node))
+
+def getFoundationDetails(table_config, dim_config, consumption_target_dbname, feed_name, table_name):
+    try:
+        LOGGER.info("Entered into getFoundationDetails method..!!")
+        LOGGER.info("The Arguments are..")
+        LOGGER.info("consumption_target_dbname is - {}".format(consumption_target_dbname))
+        LOGGER.info("feed_name is - {}".format(feed_name))
+        LOGGER.info("table_name is - {}".format(table_name))
+
+        dim_config_data = hdfs_exec(dim_config)
+        exec(dim_config_data)
+        LOGGER.info("Dimension config executed successfully..!!")
+        try:
+            LOGGER.info(len(table_config))
+        except:
+            LOGGER.error("target_view_conformation Dictionary is not present in Table Configuration")
+        else:
+            consumption_db_name = getProperty.checkProperty(table_config,"consumption_db_name",consumption_target_dbname)
+            foundation_DBName = consumption_db_name + dbsuffix
+            LOGGER.info("foundation_DBName is {}".format(foundation_DBName))
+
+            Consumption_ViewNameExists = getProperty.checkProperty_viewname(table_config, "consumption_view_name")
+            if(Consumption_ViewNameExists == ""):
+                foundation_ViewName = target_viewname_creation_dim.createTargetViewName(dim_config, foundation_DBName, table_name)
+                LOGGER.info("foundation_ViewName is {}".format(foundation_ViewName))
+            else:
+                foundation_ViewName = Consumption_ViewNameExists
+                LOGGER.info("foundation_ViewName is {}".format(foundation_ViewName))
+
+        return foundation_DBName, foundation_ViewName
+    except:
+        LOGGER.error("Error occured in getFoundationDetails method due to {}".format(sys.exc_info()))
+        sys.exit(1)
+
+def getAttributes(list_metadata):
+    try:
+        attributes_json = [x[17] for x in list_metadata]
+        LOGGER.info("attributes_json are - {}".format(attributes_json))
+
+        attr_dict = OrderedDict()
+        attributes = OrderedDict()
+        try:
+            attributes = json.loads(attributes_json[0], object_pairs_hook=OrderedDict)
+        except:
+            LOGGER.info("Error occured in getAttributes method. Please validate format of the src_columnlist_attributiondata property in metadata file - Error details are - {}".format(sys.exc_info()))
+            sys.exit(1)
+        else:
+            if(len(attributes) == 0):
+                LOGGER.info("There is no attribution data configured")
+            else:
+                LOGGER.info("attributes is - {}".format(attributes))
+
+                attr_keys=attributes.keys()
+                LOGGER.info("attr_keys is - {}".format(attr_keys))
+
+                initial = 0
+                for attr in attributes.keys():
+                    LOGGER.info("Incoming attribute is - {}".format(attributes[attr_keys[0]]['default_value']))
+                    if(attributes[attr_keys[initial]]['default_value'] == ''):
+                        LOGGER.info("Default value of the attribute - {} is empty".format(attr))
+                        attr_dict[attr_keys[initial].strip()] = ""
+                    else:
+                        LOGGER.info("Default value of the attribute - {} is {}".format(attr, attributes[attr]['default_value']))
+                        attr_dict[attr_keys[initial].strip()] = attributes[attr_keys[initial]]['default_value'].strip()
+                    initial = initial + 1
+
+            LOGGER.info("attr_dict is - {}".format(attr_dict))
+            return attr_dict
+    except:
+        LOGGER.error("Error occured in getAttributes method due to {}".format(sys.exc_info()))
+        sys.exit(1)
+    
+def getAdditionalAttributesMapping(sqlcontext, list_metadata, foundation_DBName, foundation_ViewName):
+    global LOGGER
+    try:
+        LOGGER.info("Entered into getAdditionalAttributesMapping method")
+        LOGGER.info("foundation_DBName is - {}".format(foundation_DBName))
+        LOGGER.info("foundation_ViewName is - {}".format(foundation_ViewName))
+        attributes_json = [x[17] for x in list_metadata]
+        LOGGER.info("attributes_json are - {}".format(attributes_json))
+
+        attr_dict_map = OrderedDict()
+        attributes = OrderedDict()
+        try:
+            attributes = json.loads(attributes_json[0], object_pairs_hook=OrderedDict)
+        except:
+            LOGGER.info("Error occured in getAdditionalAttributesMapping method. Please validate format of the src_columnlist_attributiondata property in metadata file - Error details are - {}".format(sys.exc_info()))
+            sys.exit(1)
+        else:
+            LOGGER.info("attributes is - {}".format(attributes))
+            if(len(attributes) == 0):
+                LOGGER.info("There is no attribution data configured")
+            else:
+                LOGGER.info("attribution data are available")
+                LOGGER.info("query is - select distinct attribution_name from " + foundation_DBName + "." + foundation_ViewName)
+                df_attributionnamedata = sqlcontext.sql("select distinct attribution_name from " + foundation_DBName + "." + foundation_ViewName)
+                LOGGER.info("df_attributionnamedata is created")
+                attribution_name = str(df_attributionnamedata.collect()[0][0])
+                #attribution_name = "Skyrizi_actual_adoption_segment, Skyrizi_Baseline_segment"
+                LOGGER.info("attribution_name is - {}".format(attribution_name))
+                attribution_name_list = attribution_name.split(",")                
+                LOGGER.info("attribution_name_list is - {}".format(attribution_name_list))
+
+                attr_keys=attributes.keys()
+                LOGGER.info("attr_keys is - {}".format(attr_keys))
+
+                initial = 0
+                for attr in attributes.keys():
+                    attr_dict_map[attr_keys[initial].strip()] = attribution_name_list[initial].strip()
+                    initial = initial + 1
+
+            LOGGER.info("attr_dict_map is - {}".format(attr_dict_map))
+            return attr_dict_map
+    except:
+        LOGGER.error("Error occured in getAdditionalAttributesMapping method due to {}".format(sys.exc_info()))
+        sys.exit(1)
+
+'''
+This method is used to load the data into Standard table in Consolidated layer
+'''
+def loadStandardTable(sqlcontext, dim_config, consumption_config, consumption_target_dbname, feed_name, table_name, list_metadata, meta_src_refresh_type_column, standard_dbname, standard_tablename, data_node, queue_name):
+    global attr_dict
+    try:
+        LOGGER.info("Standard table load for the Feed Name - " + feed_name + " is started..!!")
+        LOGGER.info("Incoming arguments are..")
+        LOGGER.info("dim_config is - {}".format(dim_config))
+        LOGGER.info("consumption_config is - {}".format(consumption_config))
+        LOGGER.info("consumption_target_dbname is - {}".format(consumption_target_dbname))
+        LOGGER.info("feed_name is - {}".format(feed_name))
+        LOGGER.info("table_name is - {}".format(table_name))
+        LOGGER.info("list_metadata is - {}".format(list_metadata))
+        LOGGER.info("meta_src_refresh_type_column is - {}".format(meta_src_refresh_type_column))
+        LOGGER.info("standard_dbname is - {}".format(standard_dbname))
+        LOGGER.info("standard_tablename is - {}".format(standard_tablename))
+        LOGGER.info("data_node is - {}" .format(data_node))
+
+        dim_file_config = hdfs_exec(dim_config)
+        exec(dim_file_config)
+        LOGGER.info("Dimension Config file executed Successfully..!!")
+
+        LOGGER.info("Table Specific Configuration file path - {}".format(consumption_config))
+        consumption_config_data = hdfs_exec(consumption_config)
+        exec(consumption_config_data)
+        LOGGER.info("Table Specific Configuration executed Successfully..!!")
+
+        #Getting the table name from consumption_config file name
+        table = consumption_config.split("/")
+        table_name = table[len(table)-1].replace("_config.prm","")
+        LOGGER.info("Table name is - {}".format(table_name))
+
+        config_list = target_view_conformation_list
+        LOGGER.info("Number of target view conformation is {}".format(len(target_view_conformation_list)))
+
+        for config in config_list:
+            LOGGER.info("The method getFoundationDetails is going to Start..!!")
+            foundation_DBName, foundation_ViewName = getFoundationDetails(config, dim_config, consumption_target_dbname, feed_name, table_name)
+
+            LOGGER.info("foundation_DBName is - {}".format(foundation_DBName))
+            LOGGER.info("foundation_ViewName is - {}".format(foundation_ViewName))
+
+            df_foundation = sqlcontext.sql("select * from " + foundation_DBName + "." + foundation_ViewName)
+            df_foundation.createOrReplaceTempView("foundation_data")
+
+            attr_dict = OrderedDict()
+            LOGGER.info("The Method getAttributes is going to Start..!!")
+            attr_dict = getAttributes(list_metadata)
+            LOGGER.info("The Method getAttributes is completed..!!")
+            LOGGER.info("attr_dict value is - {}".format(attr_dict))
+
+            if(len(attr_dict) == 0):
+                LOGGER.info("There is no Segment data provided for the feed name -" + feed_name + ". So No data will inserted into Standard table ")
+            else:
+                LOGGER.info("Segment data are available for the feed name -" + feed_name + ". So Good to go for inserting into Standard table ")
+
+                LOGGER.info("Retrieving the required columns from Foundation data..")
+                df_basestandard = sqlcontext.sql("select file_name, feed_name, profile_type, data_source_provider_name, data_source_provider_id, profile_identifier, attribution_name, attribution_value, src_attribution_value, franchise_name, mdm_product_identifier, mdm_market_identifier,  brand_name, indication_name, indication_abbreviation, branded_unbranded, category_name, category_value, frequency, source, vendor_name, ingestion_datetime, attribution_effective_datetime, 'Y' as active_flag, cast('-1' as int) as priority_order from foundation_data")
+                df_basestandard.createOrReplaceTempView("base_standarddata")
+
+                LOGGER.info("Base Standard data is created.")                
+
+                if(len(attr_dict) > 1):
+                    LOGGER.info("Processing Multiple Segments data is started..!!")
+
+                    df_attributionname = sqlcontext.sql("select profile_identifier, arr_mixes.attribution_name from (select profile_identifier, split((attribution_name),',') as arr_mix from base_standarddata) A lateral view explode(A.arr_mix) arr_mixes as attribution_name")
+                    df_attributionname.createOrReplaceTempView("base_attribution_name")
+                    LOGGER.info("Base attribution name data is created..!!")
+                    LOGGER.info("df_attributionname count is - {}".format(df_attributionname.count()))
+                    
+                    df_srcattributionvalue = sqlcontext.sql("select profile_identifier, arr_mixes.src_attribution_value from (select profile_identifier, split((src_attribution_value),',') as arr_mix from base_standarddata) A lateral view explode(A.arr_mix) arr_mixes as src_attribution_value")
+                    df_srcattributionvalue.createOrReplaceTempView("base_src_attribution_value")
+                    LOGGER.info("Base Source attribution value data is created..!!")
+                    LOGGER.info("df_srcattributionvalue count is - {}".format(df_srcattributionvalue.count()))
+                    
+                    df_attributionname=df_attributionname.withColumn('row_index', row_number().over(Window.orderBy("profile_identifier")))
+                    df_srcattributionvalue=df_srcattributionvalue.withColumn('row_index', row_number().over(Window.orderBy("profile_identifier")))
+                    df_attributionname = df_attributionname.join(df_srcattributionvalue, on=["row_index"]).drop("row_index").select(df_attributionname.profile_identifier, df_attributionname.attribution_name, df_srcattributionvalue.src_attribution_value)
+                    df_attributionname.createOrReplaceTempView("base_combineddata")
+                    LOGGER.info("Combining attribution name data and src attribution data is completed..!!")
+                    LOGGER.info("df_attributionname count is - {}".format(df_attributionname.count()))
+                    LOGGER.info("df_attributionname schema is - ")
+                    LOGGER.info(df_attributionname.printSchema())
+                    
+                    
+                    df_attributionvalue = sqlcontext.sql("select profile_identifier, arr_mixes.attribution_value from (select profile_identifier, split((attribution_value),',') as arr_mix from base_standarddata) A lateral view explode(A.arr_mix) arr_mixes as attribution_value")
+                    df_attributionvalue.createOrReplaceTempView("base_attribution_value")
+                    LOGGER.info("Base attribution value data is created..!!")
+                    LOGGER.info("df_attributionvalue count is - {}".format(df_attributionvalue.count()))
+                    
+                    df_attributionname=df_attributionname.withColumn('row_index', row_number().over(Window.orderBy("profile_identifier")))
+                    df_attributionvalue=df_attributionvalue.withColumn('row_index', row_number().over(Window.orderBy("profile_identifier")))
+                    df_attributionname = df_attributionname.join(df_attributionvalue, on=["row_index"]).drop("row_index").select(df_attributionname.profile_identifier, df_attributionname.attribution_name, df_attributionname.src_attribution_value, df_attributionvalue.attribution_value)
+                    df_attributionname.createOrReplaceTempView("stage_combineddata")
+                    LOGGER.info("Combining attribution name data and attribution value is completed..!!")
+                    LOGGER.info("df_attributionname count is - {}".format(df_attributionname.count()))
+                    LOGGER.info("df_attributionname schema is - ")
+                    LOGGER.info(df_attributionname.printSchema())
+                    
+                    df_standard = sqlcontext.sql("select file_name, feed_name, profile_type, profile_identifier, data_source_provider_name, data_source_provider_id, franchise_name, mdm_product_identifier, mdm_market_identifier, brand_name, indication_name, indication_abbreviation, branded_unbranded, category_name, category_value, frequency, source, vendor_name, ingestion_datetime, attribution_effective_datetime,  active_flag, priority_order  from base_standarddata")
+                    df_standard.createOrReplaceTempView("stage_combineddata1")
+                    #df_standard=df_standard.withColumn('row_index', row_number().over(Window.orderBy(monotonically_increasing_id())))
+                    LOGGER.info("Base Standard layer data is created..!!")
+                    LOGGER.info("df_standard count is - {}".format(df_standard.count()))
+                    LOGGER.info("df_standard schema is - ")
+                    LOGGER.info(df_standard.printSchema())
+                    
+                    #df_attributionname=df_attributionname.withColumn('row_index', row_number().over(Window.orderBy("profile_identifier")))
+                    #LOGGER.info("row_index added to df_attributionname")
+                    #df_standard=df_standard.withColumn('row_index', row_number().over(Window.orderBy("profile_identifier")))
+                    #LOGGER.info("row_index added to df_standard")
+                    #df_standard = df_standard.drop("profile_identifier")
+                    #LOGGER.info("profile_identifier is removed from df_standard")
+                    df_attributionname = df_attributionname.join(df_standard, on=["profile_identifier"]).distinct()
+                    LOGGER.info("df_attributionname is joined with df_standard")
+                    #df_attributionname=df_attributionname.withColumn('row_index', row_number().over(Window.orderBy(monotonically_increasing_id())))
+                    #df_attributionname = df_attributionname.join(df_standard, on=["profile_identifier"])
+                    #df_standard = df_standard.join(df_attributionname, on=["row_index"]).drop("row_index")
+                    df_attributionname.createOrReplaceTempView("stage_standarddata")
+                    LOGGER.info("Combining attribution name data and standard data is completed..!!")
+                    LOGGER.info("df_attributionname count is - {}".format(df_attributionname.count()))
+                    LOGGER.info("df_attributionname schema is - ")
+                    LOGGER.info(df_attributionname.printSchema())
+                else:
+                    LOGGER.info("Processing Single Segment data is started..!!")
+                    df_standard = sqlcontext.sql("select file_name, feed_name, profile_type, data_source_provider_name, data_source_provider_id, profile_identifier, franchise_name, mdm_product_identifier, mdm_market_identifier, brand_name, indication_name, indication_abbreviation, branded_unbranded, category_name, category_value, frequency, source, vendor_name, ingestion_datetime, attribution_effective_datetime,  active_flag, priority_order, attribution_name, src_attribution_value, attribution_value  from base_standarddata")
+                    df_standard.createOrReplaceTempView("stage_standarddata")
+                    LOGGER.info("Base Standard data is created..!!")
+                    LOGGER.info("df_standard count is - {}".format(df_standard.count()))
+
+                df_standard=sqlcontext.sql("select file_name, feed_name, profile_type, data_source_provider_name, data_source_provider_id, profile_identifier, franchise_name, mdm_product_identifier, mdm_market_identifier, brand_name, indication_name, indication_abbreviation, branded_unbranded, category_name, category_value, frequency, source, vendor_name, ingestion_datetime, attribution_effective_datetime,  active_flag, priority_order, attribution_name, src_attribution_value, attribution_value from stage_standarddata")
+                df_standard.createOrReplaceTempView("standarddata")
+                LOGGER.info("Fetching the required columns from Standard data..!!")
+                LOGGER.info("df_standard count is - {}".format(df_standard.count()))
+
+                df_standard_final = sqlcontext.sql("select file_name, feed_name, profile_type, data_source_provider_name, data_source_provider_id, profile_identifier, attribution_value, src_attribution_value,  mdm_product_identifier, mdm_market_identifier, brand_name, indication_name, indication_abbreviation, branded_unbranded,  category_name, category_value, frequency, source, vendor_name, ingestion_datetime, attribution_effective_datetime, active_flag, priority_order, franchise_name, attribution_name from standarddata")
+                df_standard_final.createOrReplaceTempView("finalstandarddata")
+                LOGGER.info("Ordering the Standard columns are completed..!!")
+                LOGGER.info("df_standard count is - {}".format(df_standard.count()))
+
+                LOGGER.info("Setting spark properties for dynamic partitions..")
+                sqlcontext.sql("set mapred.job.queue.name=" + queue_name)
+                sqlcontext.sql("SET hive.exec.dynamic.partition = true")
+                sqlcontext.sql("SET hive.exec.dynamic.partition.mode = nonstrict")
+                parent_partition_column = "franchise_name"
+                child_partition_column = "attribution_name"
+                if(meta_src_refresh_type_column == ""):
+                    meta_src_refresh_type_column = "Full Refresh"
+                LOGGER.info("Refresh type is - {}".format(meta_src_refresh_type_column))
+                if(meta_src_refresh_type_column == "Full Refresh"):
+                    df_standard_main = sqlcontext.sql("select * from " + standard_dbname + "." +  standard_tablename + " where feed_name = '" + feed_name + "'")
+                    df_standard_main.createOrReplaceTempView("standarddata_main")
+                    LOGGER.info("Main dataframe for Standard table is created..")
+                    LOGGER.info("df_standard_main Schema is - {}".format(df_standard_main.printSchema()))
+                    LOGGER.info("df_standard_final Schema is - {}".format(df_standard_final.printSchema()))
+                    
+                    df_standard_old_records = sqlcontext.sql("select file_name, feed_name, profile_type, data_source_provider_name, data_source_provider_id, profile_identifier, attribution_value, src_attribution_value,  mdm_product_identifier, mdm_market_identifier, brand_name, indication_name, indication_abbreviation, branded_unbranded,  category_name, category_value, frequency, source, vendor_name, ingestion_datetime, attribution_effective_datetime, 'N' as active_flag, priority_order, franchise_name, attribution_name from standarddata_main")
+                    LOGGER.info("df_standard_old_records dataframe is created.")
+                    #LOGGER.info("df_standard_old_records count is - {}".format(df_standard_old_records.count()))
+                    df_standard_final = df_standard_final.union(df_standard_old_records)
+                    df_standard_final.createOrReplaceTempView("standarddata_final")
+                    #LOGGER.info("df_standard_final count is - {}".format(df_standard_final.count()))
+
+                    LOGGER.info("Combining old and new records are completed..")
+                    
+                    sqlcontext.sql("insert overwrite table " + standard_dbname + "." +  standard_tablename + " partition(" + parent_partition_column + "," + child_partition_column + ") select * from standarddata_final")
+                    LOGGER.info("Updated active_flag column as 'N' for old records successfully..!")
+                else:
+                    sqlcontext.sql("insert overwrite table " + standard_dbname + "." +  standard_tablename + " partition(" + parent_partition_column + "," + child_partition_column + ") select * from finalstandarddata")
+                    LOGGER.info("Inserting data into Standard table is completed for the feed_name is - {}".format(feed_name))
+                sqlcontext.sql("MSCK REPAIR TABLE " + standard_dbname + "." +  standard_tablename)
+                LOGGER.info("MSCK Repair has been done for - " + standard_dbname + "." +  standard_tablename)
+                invalidate_metadata(standard_dbname,standard_tablename,data_node)
+                LOGGER.info("Invalidate metadata has been done for - " + standard_dbname + "." +  standard_tablename)
+            return 0
+    except:
+        LOGGER.error("Error occured in loadStandardTable method due to {}".format(sys.exc_info()))
+        sys.exit(1)
+
+'''
+This method is used for formating the additional attribute property value to dictionary
+'''
+def getAdditionalAttributes(additional_attributes):
+    try:
+        addAttr_dict = OrderedDict()
+        if(additional_attributes != ""):
+            if(";" in additional_attributes):
+                addAttr = additional_attributes.split(";")
+                for attr in addAttr:
+                    if("|" in attr):
+                        col_trans = attr.split("|")
+                        addAttr_dict[col_trans[0].strip()] = col_trans[1].strip()
+                    else:
+                        addAttr_dict[attr.strip()] = ""
+            else:
+                if("|" in additional_attributes):
+                    col_trans = additional_attributes.split("|")
+                    addAttr_dict[col_trans[0].strip()] = col_trans[1].strip()
+                else:
+                    addAttr_dict[additional_attributes.strip()] = ""
+        else:
+            addAttr_dict = {}
+
+        return addAttr_dict
+    except:
+        LOGGER.error("Error occured in getAdditionalAttributes method due to {}".format(sys.exc_info()))
+        sys.exit(1)
+        
+'''
+This method is used to load the data into Extended table of Consolidated layer
+'''
+def loadExtendedTable(spark, sqlcontext, dim_config, consumption_config, feed_name, table_name, list_metadata, meta_src_refresh_type_column, meta_additional_attributes,extended_dbname, extended_tablename, meta_feed_name, meta_profile_type, meta_src_franchise_column_name, data_node, queue_name):
+    try:
+        LOGGER.info("Entered into loadExtendedTable method..!!")
+        LOGGER.info("Arguments passed to loadExtendedTable method are..")
+        LOGGER.info("dim_config is - {}" .format(dim_config))
+        LOGGER.info("consumption_config is - {}" .format(consumption_config))
+        LOGGER.info("feed_name is - {}" .format(feed_name))
+        LOGGER.info("table_name is - {}" .format(table_name))
+        LOGGER.info("list_metadata is - {}" .format(list_metadata))
+        LOGGER.info("meta_src_refresh_type_column is - {}" .format(meta_src_refresh_type_column))
+        LOGGER.info("meta_additional_attributes is - {}" .format(meta_additional_attributes))
+        LOGGER.info("extended_dbname is - {}" .format(extended_dbname))
+        LOGGER.info("extended_tablename is - {}" .format(extended_tablename))
+        LOGGER.info("meta_feed_name is - {}" .format(meta_feed_name))
+        LOGGER.info("meta_profile_type is - {}" .format(meta_profile_type))
+        LOGGER.info("meta_src_franchise_column_name is - {}" .format(meta_src_franchise_column_name))
+        LOGGER.info("data_node is - {}" .format(data_node))
+
+
+        dim_file_config = hdfs_exec(dim_config)
+        exec(dim_file_config)
+        LOGGER.info("Dimension Config file executed Successfully..!!")
+
+        LOGGER.info("Table Specific Configuration file path - {}".format(consumption_config))
+        consumption_config_data = hdfs_exec(consumption_config)
+        exec(consumption_config_data)
+        LOGGER.info("Table Specific Configuration executed Successfully..!!")
+
+        #Getting the table name from consumption_config file name
+        table = consumption_config.split("/")
+        table_name = table[len(table)-1].replace("_config.prm","")
+        LOGGER.info("Table name is - {}".format(table_name))
+
+        config_list = target_view_conformation_list
+        LOGGER.info("Number of target view conformation is {}".format(len(target_view_conformation_list)))
+
+        LOGGER.info("getting Attributes..!!")
+        attr_dict = getAttributes(list_metadata)
+        LOGGER.info("attr_dict is - {}".format(attr_dict))
+
+        LOGGER.info("getting Additional Attributes..!!")
+        addAttr_dict = getAdditionalAttributes(meta_additional_attributes)
+        LOGGER.info("addAttr_dict is - {}".format(addAttr_dict))       
+
+        
+        for config in config_list:
+            if(len(addAttr_dict) == 0):
+                LOGGER.info("There is no additional attributes provided in the metadata file. So no records will be inserted into Extended Table.")
+                return 0
+            else:
+                LOGGER.info("additional attributes are available for the feed name -" + feed_name + ". So Good to go for inserting into Extended table ")
+                LOGGER.info("Declaring temp variables")
+                segmentColumns = ""
+                segmentColumns_alias = ""
+                segmentColNameDetails = ""
+                segmentColNameDetails_temp = ""
+                segmentColDetails = ""
+                segmentColDetails_temp = ""
+    
+                segmentColNameDetails_alias_concat = ""
+                segmentColDetails_alias_concat = ""
+                segmentNameConcat = ""
+                segmentValueConcat = ""
+                
+                foundation_DBName, foundation_ViewName = getFoundationDetails(config, dim_config, consumption_target_dbname, feed_name, table_name)
+                LOGGER.info("foundation_DBName is - {}".format(foundation_DBName))
+                LOGGER.info("foundation_ViewName is - {}".format(foundation_ViewName))
+                
+                LOGGER.info("getting Additional Attributes mapping..!!")
+                attr_dict_map = getAdditionalAttributesMapping(sqlcontext, list_metadata, foundation_DBName, foundation_ViewName)
+                LOGGER.info("attr_dict_map is - {}".format(attr_dict_map))
+                
+                df_foundation = sqlcontext.sql("select * from " + foundation_DBName + "." +  foundation_ViewName)
+                df_foundation.createOrReplaceTempView("foundation_data")
+                LOGGER.info("foundation_data is created for processing extended table")
+                
+                schema_extended = StructType([StructField("company_profile_identifier", StringType(),True), StructField("additional_attribute_key_name", StringType(), True), StructField("additional_attribute_value", StringType(), True), StructField("attribution_name", StringType(), True)])
+                LOGGER.info("Schema preparation is done for Extended")
+                    
+                df_extended = spark.createDataFrame([],schema_extended)
+                LOGGER.info("Empty dataframe is created for Extended..!!")
+                    
+    
+                #May_20_Skyrizi_Adoption_Segment|Name,Brand_Name; Actual_Segment|Testing1,Testing2,Testing3
+                for key, value in addAttr_dict.items():
+                    LOGGER.info("Key is - {}".format(key))
+                    LOGGER.info("Value is - {}".format(value))
+                    if key in attr_dict.keys():
+                        segmentColName = attr_dict[key].strip()
+                    else:
+                        segmentColName = key.strip()
+    
+                    LOGGER.info("segmentColName are - {}".format(segmentColName))
+    
+                    if(segmentColumns == ""):
+                        segmentColumns = segmentColName + " as " + key.strip() + "_segment"
+                    else:
+                        segmentColumns += "," + segmentColName + " as " + key.strip() + "_segment"
+    
+                    LOGGER.info("segmentColumns are - {}".format(segmentColumns))
+    
+                    if(segmentColumns_alias == ""):
+                        segmentColumns_alias = key.strip() + "_segment"
+                    else:
+                        segmentColumns_alias += "," + key.strip() + "_segment"
+    
+                    LOGGER.info("segmentColumns_alias are - {}".format(segmentColumns_alias))
+    
+                    segmentCols = value.replace("{", "").replace("}","")
+                    segmentCols_list = segmentCols.split(",")
+                    LOGGER.info("segmentCols_list are - {}".format(segmentCols_list))
+    
+                    segmentColNameDetails_temp = ""
+                    segmentColDetails_temp = ""
+                    for col in segmentCols_list:
+                        if(segmentColNameDetails == ""):
+                            segmentColNameDetails = "'" + col.strip() + "' as " + col.strip() + "_column"
+                        else:
+                            segmentColNameDetails += ",'" + col.strip() + "' as " + col.strip() + "_column"
+    
+                        if(segmentColNameDetails_temp == ""):
+                            segmentColNameDetails_temp = col.strip() + "_column"
+                        else:
+                            segmentColNameDetails_temp += ", " +  col.strip() + "_column"
+    
+                        if(segmentColDetails == ""):
+                            segmentColDetails = col.strip()
+                        else:
+                            segmentColDetails += "," +  col.strip()
+    
+                        if(segmentColDetails_temp == ""):
+                            segmentColDetails_temp = col.strip()
+                        else:
+                            segmentColDetails_temp += "," +  col.strip()
+    
+                    LOGGER.info("segmentColNameDetails are - {}".format(segmentColNameDetails))
+                    LOGGER.info("segmentColNameDetails_temp are - {}".format(segmentColNameDetails_temp))
+                    LOGGER.info("segmentColDetails are - {}".format(segmentColDetails))
+                    LOGGER.info("segmentColDetails_temp are - {}".format(segmentColNameDetails_temp))
+    
+                    segmentColNameDetails_alias_list = segmentColNameDetails_temp.split(",")
+                    if(len(segmentColNameDetails_alias_list) > 1):
+                        segmentColNameDetails_alias_concat_local = ""
+                        for column in segmentColNameDetails_alias_list:
+                            if(segmentColNameDetails_alias_concat_local == ""):
+                                segmentColNameDetails_alias_concat_local = " concat_ws(',', " + column.strip()
+                            else:
+                                segmentColNameDetails_alias_concat_local += ", " + column.strip()
+                        segmentColNameDetails_alias_concat_local += ") as " + key + "_namecombined"
+                    else:
+                        segmentColNameDetails_alias_concat_local = segmentColNameDetails_temp
+                    LOGGER.info("segmentColNameDetails_alias_concat_local are - {}".format(segmentColNameDetails_alias_concat_local))
+    
+                    if(segmentColNameDetails_alias_concat == ""):
+                        segmentColNameDetails_alias_concat = segmentColNameDetails_alias_concat_local
+                    else:
+                        segmentColNameDetails_alias_concat += ", " +  segmentColNameDetails_alias_concat_local
+    
+                    LOGGER.info("segmentColNameDetails_alias_concat are - {}".format(segmentColNameDetails_alias_concat))
+    
+                    segmentColDetails_list = segmentColDetails_temp.split(",")
+                    if(len(segmentColDetails_list) > 1):
+                        segmentColDetails_alias_concat_local = ""
+                        for column in segmentColDetails_list:
+                            if(segmentColDetails_alias_concat_local == ""):
+                                segmentColDetails_alias_concat_local = " concat_ws(',', " + column.strip()
+                            else:
+                                segmentColDetails_alias_concat_local += ", " + column.strip()
+                        segmentColDetails_alias_concat_local += ") as " + key + "_valuecombined"
+                    else:
+                        segmentColDetails_alias_concat_local = segmentColDetails_temp
+                    LOGGER.info("segmentColDetails_alias_concat_local are - {}".format(segmentColDetails_alias_concat_local))
+    
+                    if(segmentColDetails_alias_concat == ""):
+                        segmentColDetails_alias_concat = segmentColDetails_alias_concat_local
+                    else:
+                        segmentColDetails_alias_concat += ", " +  segmentColDetails_alias_concat_local
+    
+                    LOGGER.info("segmentColDetails_alias_concat are - {}".format(segmentColDetails_alias_concat))
+                    
+                    LOGGER.info("df_baseextended query is - select feed_name, profile_type, profile_identifier as company_profile_identifier, {0}, {1}, {2}, franchise_name, ingestion_datetime, 'Y' as active_flag from foundation_data".format(segmentColumns,segmentColNameDetails,segmentColDetails))
+        
+                    df_baseextended = sqlcontext.sql("select feed_name, profile_type, profile_identifier as company_profile_identifier," + segmentColumns + ", " + segmentColNameDetails + ", " +  segmentColDetails + ", franchise_name, ingestion_datetime, 'Y' as active_flag from foundation_data")
+                    df_baseextended.createOrReplaceTempView("base_extendeddata")
+                    #LOGGER.info("df_baseextended count is - {}".format(df_baseextended.count()))
+                    LOGGER.info("df_baseextended schema is - ")
+                    LOGGER.info(df_baseextended.printSchema())
+                    
+                    df_basecolumns = sqlcontext.sql("select feed_name, profile_type, profile_identifier as company_profile_identifier, franchise_name, ingestion_datetime, 'Y' as active_flag from foundation_data")
+                    df_basecolumns.createOrReplaceTempView("base_extendedcolumns")
+                    #LOGGER.info("df_basecolumns count is - {}".format(df_basecolumns.count()))
+                    LOGGER.info("df_basecolumns schema is - ")
+                    LOGGER.info(df_basecolumns.printSchema())
+                    
+                    LOGGER.info("df_basecombined query is - select feed_name, profile_type, company_profile_identifier, {0}, {1}, {2}, franchise_name, ingestion_datetime, active_flag from base_extendeddata".format(segmentColumns_alias,segmentColNameDetails_alias_concat,segmentColDetails_alias_concat))
+        
+                    df_basecombined = sqlcontext.sql("select feed_name, profile_type, company_profile_identifier, " + segmentColumns_alias + ", " + segmentColNameDetails_alias_concat + "," + segmentColDetails_alias_concat + " , franchise_name, ingestion_datetime, active_flag from base_extendeddata")
+                    df_basecombined.createOrReplaceTempView("combined_extendeddata")
+                    LOGGER.info("df_basecombined schema is - ")
+                    LOGGER.info(df_basecombined.printSchema())
+            
+                    LOGGER.info("combined_extendeddata is created..!!")                    
+                    
+                    if(len(attr_dict) > 1):
+                        LOGGER.info("Explode process is started..")
+                        
+                        #### Attribution Key Name explode started..!!!
+                        LOGGER.info("select company_profile_identifier, arr_mixes.additional_attribute_key_name from (select company_profile_identifier, split((" + key + "_namecombined),',') as arr_mix from combined_extendeddata) A lateral view explode(A.arr_mix) arr_mixes as additional_attribute_key_name")
+                        
+                        df_segmentnameexploded = sqlcontext.sql("select company_profile_identifier, arr_mixes.additional_attribute_key_name from (select company_profile_identifier, split((" + key + "_namecombined),',') as arr_mix from combined_extendeddata) A lateral view explode(A.arr_mix) arr_mixes as additional_attribute_key_name")
+                        df_segmentnameexploded.createOrReplaceTempView("segmentnameexploded")
+                        LOGGER.info("Segment key name is exploded for the key - {}".format(key))
+                        LOGGER.info("df_segmentnameexploded schema is - ")
+                        LOGGER.info(df_segmentnameexploded.printSchema())
+                        LOGGER.info("df_segmentnameexploded count is - {}".format(df_segmentnameexploded.count()))
+                        #### Attribution Key Name explode ended..!!!
+                        
+                        #### Attribution value explode Started..!!!
+            
+                        LOGGER.info("select company_profile_identifier, arr_mixes.additional_attribute_value from (select company_profile_identifier, split((" + key + "_valuecombined),',') as arr_mix from combined_extendeddata) A lateral view explode(A.arr_mix) arr_mixes as additional_attribute_value")
+            
+                        df_segmentvalueexploded = sqlcontext.sql("select company_profile_identifier, arr_mixes.additional_attribute_value from (select company_profile_identifier, split((" + key + "_valuecombined),',') as arr_mix from combined_extendeddata) A lateral view explode(A.arr_mix) arr_mixes as additional_attribute_value")
+                        df_segmentvalueexploded.createOrReplaceTempView("segmentvalueexploded")
+                        LOGGER.info("df_segmentvalueexploded schema is - ")
+                        LOGGER.info(df_segmentvalueexploded.printSchema())                        
+                        LOGGER.info("Segment value is explode for the key - {}".format(key))
+                        LOGGER.info("df_segmentvalueexploded count is - {}".format(df_segmentvalueexploded.count()))
+                        #### Attribution value explode Ended..!!!
+                        
+                        #### Combining exploded Attribution Name, exploded Attribution Key Name and exploded Attribution value started..!!!
+                        
+                        df_segmentnameexploded=df_segmentnameexploded.withColumn('row_index', row_number().over(Window.orderBy("company_profile_identifier")))
+                        df_segmentvalueexploded=df_segmentvalueexploded.withColumn('row_index', row_number().over(Window.orderBy("company_profile_identifier")))
+                        df_segmentnameexploded = df_segmentnameexploded.join(df_segmentvalueexploded, on=["row_index"]).drop("row_index").select(df_segmentnameexploded.company_profile_identifier, df_segmentnameexploded.additional_attribute_key_name, df_segmentvalueexploded.additional_attribute_value)
+                        LOGGER.info("exploded Name and exploded Value are combined")
+                        #LOGGER.info("df_segmentnameexploded count is - {}".format(df_segmentnameexploded.count()))
+                        LOGGER.info("df_segmentnameexploded schema is - ")
+                        LOGGER.info(df_segmentnameexploded.printSchema())
+                        LOGGER.info("df_segmentnameexploded count is - {}".format(df_segmentnameexploded.count()))
+            
+                        df_segmentnameexploded.createOrReplaceTempView("stage_extendeddata")
+                        
+                        str_attribution_name = attr_dict_map[key]
+                        LOGGER.info("str_attribution_name is - {}".format(str_attribution_name))
+                        df_segmentnameexploded = df_segmentnameexploded.drop("attribution_name").withColumn("attribution_name", lit(str_attribution_name))
+                        LOGGER.info("attribution_name is added to df_segmentnameexploded")
+                        LOGGER.info("Staging Extended data is created..!!")
+                        
+                        df_extended = df_extended.drop("feed_name")
+                        df_extended = df_extended.drop("profile_type")
+                        df_extended = df_extended.drop("franchise_name")
+                        df_extended = df_extended.drop("ingestion_datetime")
+                        df_extended = df_extended.drop("active_flag")
+                    
+                        LOGGER.info("Attribution Name is added to exploded dataframe..!!")  
+            
+                        #df_segmentnameexploded=df_segmentnameexploded.withColumn('row_index', row_number().over(Window.orderBy("company_profile_identifier")))
+                        #df_basecolumns=df_basecolumns.withColumn('row_index', row_number().over(Window.orderBy("company_profile_identifier")))
+                        df_segmentnameexploded = df_segmentnameexploded.join(df_basecolumns, on=["company_profile_identifier"]).distinct()
+                        #df_segmentnameexploded = df_segmentnameexploded.join(df_basecolumns, on=["row_index"]).drop("row_index").select(df_segmentnameexploded.company_profile_identifier, df_segmentnameexploded.additional_attribute_key_name, df_segmentnameexploded.additional_attribute_value, df_segmentnameexploded.attribution_name, df_basecolumns.feed_name, df_basecolumns.profile_type, df_basecolumns.franchise_name, df_basecolumns.ingestion_datetime, df_basecolumns.active_flag)
+                        LOGGER.info("Base columns are added to df_segmentnameexploded")
+                        #LOGGER.info("df_extended count is - {}".format(df_extended.count()))
+                        LOGGER.info("df_segmentnameexploded schema is - ")
+                        LOGGER.info(df_segmentnameexploded.printSchema())
+                        LOGGER.info("df_segmentnameexploded count is - {}".format(df_segmentnameexploded.count()))
+                        
+                        #df_extended=df_extended.withColumn('row_index', row_number().over(Window.orderBy("company_profile_identifier")))
+                        #df_basecolumns=df_basecolumns.withColumn('row_index', row_number().over(Window.orderBy("company_profile_identifier")))
+                        df_extended = df_extended.join(df_basecolumns, on=["company_profile_identifier"]).distinct()
+                        #df_extended = df_extended.join(df_basecolumns, on=["row_index"]).drop("row_index").select(df_extended.company_profile_identifier, df_extended.additional_attribute_key_name, df_extended.additional_attribute_value, df_extended.attribution_name, df_basecolumns.feed_name, df_basecolumns.profile_type, df_basecolumns.franchise_name, df_basecolumns.ingestion_datetime, df_basecolumns.active_flag)
+                        LOGGER.info("Base columns are added to df_extended")
+                        LOGGER.info("df_extended count is - {}".format(df_extended.count()))
+                        LOGGER.info("df_extended schema is - ")
+                        LOGGER.info(df_extended.printSchema())
+                        
+                        df_extended = df_extended.union(df_segmentnameexploded)
+                        LOGGER.info("df_extended count is - {}".format(df_extended.count()))
+                    
+                        LOGGER.info("Combining Extended and exploded dataframe is completed..!!")
+                    else:
+                        LOGGER.info("additional query is - select company_profile_identifier, " + value.strip() + "_column as additional_attribute_key_name, " + value  + " as additional_attribute_value from combined_extendeddata")
+                        
+                        df_segmentdata = sqlcontext.sql("select company_profile_identifier, " + value.strip() + "_column as additional_attribute_key_name, " + value  + " as additional_attribute_value from combined_extendeddata")
+                        
+                        df_segmentdata = df_segmentdata.drop("feed_name")
+                        df_segmentdata = df_segmentdata.drop("profile_type")
+                        df_segmentdata = df_segmentdata.drop("franchise_name")
+                        df_segmentdata = df_segmentdata.drop("ingestion_datetime")
+                        df_segmentdata = df_segmentdata.drop("active_flag")
+                        str_attribution_name = attr_dict_map[key]
+                        LOGGER.info("str_attribution_name is - {}".format(str_attribution_name))
+                        df_segmentdata = df_segmentdata.drop("attribution_name").withColumn("attribution_name", lit(str_attribution_name))
+                        LOGGER.info("attribution_name is added to df_segmentdata")
+                        
+                        #df_segmentdata = df_segmentdata.join(df_basecolumns, on=["company_profile_identifier"])
+                        df_segmentdata=df_segmentdata.withColumn('row_index', row_number().over(Window.orderBy("company_profile_identifier")))
+                        df_basecolumns=df_basecolumns.withColumn('row_index', row_number().over(Window.orderBy("company_profile_identifier")))
+                        df_segmentdata = df_segmentdata.join(df_basecolumns, on=["row_index"]).drop("row_index").select(df_segmentdata.company_profile_identifier, df_segmentdata.additional_attribute_key_name,df_segmentdata.additional_attribute_value,df_segmentdata.attribution_name,df_basecolumns.feed_name,df_basecolumns.profile_type,df_basecolumns.franchise_name,df_basecolumns.ingestion_datetime,df_basecolumns.active_flag)
+                        
+                        df_segmentdata.createOrReplaceTempView("segmentdata_temp")
+                        LOGGER.info("Base columns are added to df_segmentdata")
+                        LOGGER.info("df_segmentdata schema is - ")
+                        LOGGER.info(df_segmentdata.printSchema())
+                        df_segmentdata_final = sqlcontext.sql("select company_profile_identifier, additional_attribute_key_name, additional_attribute_value, attribution_name, feed_name, profile_type, franchise_name, ingestion_datetime, active_flag from segmentdata_temp")
+                        df_segmentdata_final.createOrReplaceTempView("df_segmentdata_final")
+                        LOGGER.info("Ordering is completed for df_segmentdata_final")                        
+                        LOGGER.info("df_segmentdata_final schema is - ")
+                        LOGGER.info(df_segmentdata_final.printSchema())
+                        df_extended = df_extended.drop("feed_name")
+                        df_extended = df_extended.drop("profile_type")
+                        df_extended = df_extended.drop("franchise_name")
+                        df_extended = df_extended.drop("ingestion_datetime")
+                        df_extended = df_extended.drop("active_flag")
+                        #df_extended = df_extended.join(df_basecolumns, on=["company_profile_identifier"])
+                        
+                        df_extended=df_extended.withColumn('row_index', row_number().over(Window.orderBy("company_profile_identifier")))
+                        df_basecolumns=df_basecolumns.withColumn('row_index', row_number().over(Window.orderBy("company_profile_identifier")))
+                        df_extended = df_extended.join(df_basecolumns, on=["row_index"]).drop("row_index").select(df_extended.company_profile_identifier, df_extended.additional_attribute_key_name,df_extended.additional_attribute_value,df_extended.attribution_name,df_basecolumns.feed_name,df_basecolumns.profile_type,df_basecolumns.franchise_name,df_basecolumns.ingestion_datetime,df_basecolumns.active_flag)
+                        
+                        LOGGER.info("Base columns are added to df_extended")
+                        LOGGER.info("df_extended schema is - ")
+                        LOGGER.info(df_extended.printSchema())
+                        
+                        df_extended = df_extended.union(df_segmentdata_final)
+                
+                df_extended.createOrReplaceTempView("hba_extendeddata")
+                    
+                LOGGER.info("df_extended Schema is..")
+                LOGGER.info(df_extended.printSchema())
+    
+                LOGGER.info("Setting the spark properties")
+                spark.sql("set mapred.job.queue.name=" + queue_name)
+                spark.sql("SET hive.exec.dynamic.partition = true")
+                spark.sql("SET hive.exec.dynamic.partition.mode = nonstrict")
+    
+                LOGGER.info("Final data query is - select feed_name, profile_type, company_profile_identifier, additional_attribute_key_name, additional_attribute_value, ingestion_datetime, active_flag, franchise_name, attribution_name from hba_extendeddata")
+    
+                df_extended_final = spark.sql("select feed_name, profile_type, company_profile_identifier, additional_attribute_key_name, additional_attribute_value, ingestion_datetime, active_flag, franchise_name, attribution_name from hba_extendeddata")
+                df_extended_final.createOrReplaceTempView("hba_finalextendeddata")
+                LOGGER.info("df_extended_final count is - {}".format(df_extended_final.count()))
+                
+                LOGGER.info("df_extended_final Schema is..")
+                LOGGER.info(df_extended_final.printSchema())
+    
+                LOGGER.info("Final extended table is created..!!")
+    
+                parent_partition_column = "franchise_name"
+                child_partition_column = "attribution_name"
+                if(meta_src_refresh_type_column == ""):
+                    meta_src_refresh_type_column = "Full Refresh"
+                LOGGER.info("Refresh type is - {}".format(meta_src_refresh_type_column))
+                if(meta_src_refresh_type_column == "Full Refresh"):
+                    df_extended_main = spark.sql("select * from " + extended_dbname + "." + extended_tablename + " where feed_name = '" + feed_name + "'")
+                    df_extended_main.createOrReplaceTempView("extendeddata_main")
+                    LOGGER.info("Main dataframe for Extended table is created..")                    
+                    
+                    LOGGER.info("df_extended_main Schema is..")
+                    LOGGER.info(df_extended_main.printSchema())
+                    
+                    df_extended_old_records = spark.sql("select feed_name, profile_type, company_profile_identifier, additional_attribute_key_name, additional_attribute_value, ingestion_datetime, 'N' as active_flag, franchise_name, attribution_name from extendeddata_main")
+                    LOGGER.info("df_extended_old_records is created") 
+                    df_extended_old_records.createOrReplaceTempView("hba_extended_old_data")
+                    LOGGER.info("hba_extended_old_data view is created..") 
+                                        
+                    LOGGER.info("df_extended_old_records Schema is..")
+                    LOGGER.info(df_extended_old_records.printSchema())
+                    
+                    df_extended_final = df_extended_final.union(df_extended_old_records)
+                    df_extended_final.createOrReplaceTempView("extendeddata_final")
+                    LOGGER.info("Combining old and new records are completed..")                     
+                    
+                    LOGGER.info("df_extended_final Schema is..")
+                    LOGGER.info(df_extended_final.printSchema())
+                    
+                    spark.sql("insert overwrite table " + extended_dbname + "." + extended_tablename + " partition(" + parent_partition_column + "," + child_partition_column + ") select * from extendeddata_final")
+                    LOGGER.info("Overwrite operation for new and old records are completed successfully..!")                    
+                else:
+                    spark.sql("insert overwrite table " + extended_dbname + "." + extended_tablename + " partition(" + parent_partition_column + "," + child_partition_column + ") select * from hba_finalextendeddata")
+                    LOGGER.info("Inserting data into Extended table is completed for the feed_name is - {}".format(feed_name))
+        
+            spark.sql("MSCK REPAIR TABLE " + extended_dbname + "." +  extended_tablename)
+            LOGGER.info("MSCK Repair has been done for - " + extended_dbname + "." +  extended_tablename)
+
+            invalidate_metadata(extended_dbname,extended_tablename,data_node)
+            LOGGER.info("Invalidate metadata has been done for - " + extended_dbname + "." +  extended_tablename)
+
+            return 0
+    except:
+        LOGGER.error("Error occured in loadExtendedTable method due to {}".format(sys.exc_info()))
+        sys.exit(1)
+
+
+def main(spark, sqlcontext, postgresql_ip, postgresql_port, postgresql_user, postgresql_db, postgresql_jceks, postgresql_alias, feed_name, loggedin_user, consumption_target_dbname, dim_config,consumption_config, dbsuffix, table_name, standard_dbname, extended_dbname, standard_tablename, extended_tablename, data_node, queue_name):
+    global LOGGER
+    try:
+        LOGGER.info("Entered into main method..!!")
+        list_metadata = []
+        list_metadata = readStagingRecord(spark, postgresql_jceks, postgresql_alias, postgresql_user, postgresql_ip, postgresql_port, postgresql_db, feed_name)
+        LOGGER.info("list_metadata is - {}".format(list_metadata))
+
+        for row in list_metadata:
+            meta_file_name = row[0]
+            meta_feed_name = row[1]
+            meta_profile_type = row[2]
+            meta_data_source_id = row[3]
+            meta_dataset_name = row[4]
+            meta_src_franchise_column_name = row[5]
+            meta_src_brand_column_name = row[6]
+            meta_src_indication_column_name = row[7]
+            meta_src_branded_unbranded_column_name = row[8]
+            meta_feed_data_owners_email = row[9]
+            meta_src_cateogry_column_name = row[10]
+            meta_src_cateogry_value_column_name = row[11]
+            meta_frequency = row[12]
+            meta_data_source_name = row[13]
+            meta_vendor_name = row[14]
+            meta_src_attribution_effective_date_column = row[15]
+            meta_feed_attribution_effective_date_logic = row[16]
+            meta_src_columnlist_attributiondata = row[17]
+            meta_attributionvalue_translation = row[18]
+            meta_additional_attributes = row[19]
+            meta_src_refresh_type_column = row[20]
+
+            LOGGER.info("meta_file_name is - {}".format(meta_file_name))
+            LOGGER.info("meta_feed_name is - {}".format(meta_feed_name))
+            LOGGER.info("meta_profile_type is - {}".format(meta_profile_type))
+            LOGGER.info("meta_data_source_id is - {}".format(meta_data_source_id))
+            LOGGER.info("meta_dataset_name is - {}".format(meta_dataset_name))
+            LOGGER.info("meta_src_franchise_column_name is - {}".format(meta_src_franchise_column_name))
+            LOGGER.info("meta_src_brand_column_name is - {}".format(meta_src_brand_column_name))
+            LOGGER.info("meta_src_indication_column_name is - {}".format(meta_src_indication_column_name))
+            LOGGER.info("meta_src_branded_unbranded_column_name is - {}".format(meta_src_branded_unbranded_column_name))
+            LOGGER.info("meta_feed_data_owners_email is - {}".format(meta_feed_data_owners_email))
+            LOGGER.info("meta_src_cateogry_column_name is - {}".format(meta_src_cateogry_column_name))
+            LOGGER.info("meta_src_cateogry_value_column_name is - {}".format(meta_src_cateogry_value_column_name))
+            LOGGER.info("meta_frequency is - {}".format(meta_frequency))
+            LOGGER.info("meta_data_source_name is - {}".format(meta_data_source_name))
+            LOGGER.info("meta_vendor_name is - {}".format(meta_vendor_name))
+            LOGGER.info("meta_src_attribution_effective_date_column is - {}".format(meta_src_attribution_effective_date_column))
+            LOGGER.info("meta_feed_attribution_effective_date_logic is - {}".format(meta_feed_attribution_effective_date_logic))
+            LOGGER.info("meta_src_columnlist_attributiondata is - {}".format(meta_src_columnlist_attributiondata))
+            LOGGER.info("meta_attributionvalue_translation is - {}".format(meta_attributionvalue_translation))
+            LOGGER.info("meta_additional_attributes is - {}".format(meta_additional_attributes))
+            LOGGER.info("meta_src_refresh_type_column is - {}".format(meta_src_refresh_type_column))
+
+        LOGGER.info("Standard table load for the Feed Name - " + feed_name + " is going to start..!!")
+        std_output = loadStandardTable(sqlcontext, dim_config, consumption_config, consumption_target_dbname, feed_name, table_name, list_metadata, meta_src_refresh_type_column, standard_dbname, standard_tablename, data_node, queue_name)        
+        if(std_output == 0):
+            LOGGER.info("Standard Table data load for Feed Name - " + feed_name + " is completed Successfully..!!")
+
+            LOGGER.info("Extended Table data load for the Feed Name - " + feed_name + " is Started..!!")
+            ext_output = loadExtendedTable(spark, sqlcontext, dim_config, consumption_config, feed_name, table_name, list_metadata, meta_src_refresh_type_column,meta_additional_attributes, extended_dbname, extended_tablename, meta_feed_name, meta_profile_type, meta_src_franchise_column_name, data_node, queue_name)
+            if(ext_output == 0):
+                LOGGER.info("Extended Table data load for the Feed Name - " + feed_name + " is completed Successfully..!!")
+            else:
+                LOGGER.info("Extended Table data load for the Feed Name - " + feed_name + " is failed. Please check the logs for further debugging")
+        else:
+            LOGGER.info("Standard Table data load for the Feed Name - " + feed_name + " is failed. Please check the logs for further debugging")
+    except:
+        LOGGER.error("Error occured in main method due to {}".format(sys.exc_info()))
+        sys.exit(1)
+
+if __name__=="__main__":
+    global LOGGER
+
+    #Checking whether no of arguments are passed to this program or not
+    if(len(sys.argv) < 21):
+        LOGGER.info("Required arguments are not passed to the program. please check.")
+        sys.exit(1)
+    else:
+        #Setting up logger level
+        LOGGER = getLogger('Loading_data_into_Standard_table')
+        LOGGER.info("Logger initialization Completed..!!")
+
+        #Reading the parameters and calling main method
+        postgresql_ip = sys.argv[1]
+        postgresql_port = sys.argv[2]
+        postgresql_user = sys.argv[3]
+        postgresql_db = sys.argv[4]
+        postgresql_jceks = sys.argv[5]
+        postgresql_alias = sys.argv[6]
+        feed_name = sys.argv[7]
+        loggedin_user = sys.argv[8]
+        consumption_target_dbname = sys.argv[9]
+        dim_config = sys.argv[10]
+        consumption_config = sys.argv[11]
+        db_suffix = sys.argv[12]
+        dbsuffix = db_suffix.replace("dbsuffix","")
+        table_name = sys.argv[13]
+        aws_path = sys.argv[14]
+        standard_dbname = sys.argv[15]
+        extended_dbname = sys.argv[16]
+        standard_tablename = sys.argv[17]
+        extended_tablename = sys.argv[18]
+        data_node = sys.argv[19]
+        queue_name = sys.argv[20]
+
+        LOGGER.info("Arguments passed to the Loading data into Consolidated module are..")
+        LOGGER.info("postgresql_ip is - {}".format(postgresql_ip))
+        LOGGER.info("postgresql_port is - {}".format(postgresql_port))
+        LOGGER.info("postgresql_user is - {}".format(postgresql_user))
+        LOGGER.info("postgresql_jceks is - {}".format(postgresql_jceks))
+        LOGGER.info("postgresql_alias is - {}".format(postgresql_alias))
+        LOGGER.info("feed_name is - {}".format(feed_name))
+        LOGGER.info("loggedin_user is - {}".format(loggedin_user))
+        LOGGER.info("consumption_target_dbname is - {}".format(consumption_target_dbname))
+        LOGGER.info("dim_config is - {}".format(dim_config))
+        LOGGER.info("consumption_config is - {}".format(consumption_config))
+        LOGGER.info("dbsuffix is - {}".format(dbsuffix))
+        LOGGER.info("table_name is - {}".format(table_name))
+        LOGGER.info("aws_path is - {}".format(aws_path))
+        LOGGER.info("standard_dbname is - {}".format(standard_dbname))
+        LOGGER.info("extended_dbname is - {}".format(extended_dbname))
+        LOGGER.info("standard_tablename is - {}".format(standard_tablename))
+        LOGGER.info("extended_tablename is - {}".format(extended_tablename))
+        LOGGER.info("data_node is - {}".format(data_node))
+        LOGGER.info("queue_name is - {}".format(queue_name))
+
+        LOGGER.info("Loading data into Standard table is Started..!!")
+
+        LOGGER.info("Spark and SQLContext creation Started..!!")
+        spark = SparkSession.builder.appName("Loading_data_into_Standard_layer").config(conf=SparkConf()).getOrCreate()
+        sc = spark.sparkContext
+        sc._jsc.hadoopConfiguration().set("fs.s3a.multiobjectdelete.enable","false")
+        sc._jsc.hadoopConfiguration().set("fs.s3a.fast.upload","true")
+        sc._jsc.hadoopConfiguration().set("spark.sql.parquet.filterPushdown","true")
+        sc._jsc.hadoopConfiguration().set("spark.sql.parquet.mergeSchema","false")
+        sc._jsc.hadoopConfiguration().set("spark.hadoop.mapreduce.fileoutputcommitter.algorithm.version","2")
+        sc._jsc.hadoopConfiguration().set("spark.speculation","false")
+        sc._jsc.hadoopConfiguration().set("fs.s3a.security.credential.provider.path",aws_path)
+        sqlcontext = SparkSession(sc)
+        LOGGER.info("Spark and SQLContext are created Successfully..!!")
+
+        LOGGER.info("Moving to main method..!!")
+        main(spark, sqlcontext, postgresql_ip, postgresql_port, postgresql_user, postgresql_db, postgresql_jceks, postgresql_alias, feed_name, loggedin_user, consumption_target_dbname, dim_config,consumption_config, dbsuffix, table_name, standard_dbname, extended_dbname, standard_tablename, extended_tablename, data_node, queue_name)
+
+
+

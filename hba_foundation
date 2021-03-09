@@ -1,0 +1,587 @@
+from pyspark.sql import SQLContext
+from pyspark.sql import HiveContext
+from pyspark.sql import SparkSession
+import sys
+from pyspark import SparkConf, SparkContext
+from collections import OrderedDict
+import pyspark.sql.catalog
+from datetime import datetime
+import pydoop.hdfs as hdfs
+import StringIO
+import ConfigParser
+from hdfs_exec import hdfs_exec
+import commands
+import os
+import io
+import subprocess
+from subprocess import *
+from Custom_Logger import *
+import target_viewname_creation as target_viewname_creation_dim
+from target_viewname_creation import createTargetViewName as target_viewname_creation
+import itertools
+import getPropertyValues as getProperty
+
+
+# Declaring the variables as global variables
+global spark
+global initial_query
+global fact_col_query
+global dim_col_query
+global fact_table_query
+global dim_table_query
+global where_query
+global consumption_query
+global target_view_dbname
+global target_view_name
+global source_db_name
+global source_tablename
+global source_tablename_alias
+global consumption_db_name
+global consumption_view_name
+global source_columns
+global source_columns_excluded
+global where_condition
+global apply_distinct
+global dim_list
+global LOGGER
+global src_col_list
+
+'''
+This function performs creating the select query based on the below logics.
+1. If Source columns are defined, iterate the source columns and create the select query.
+2. If source columns are not defined, collect the columns list from hive metastore and if source_columns_excluded parameter is defined, need to remove those columns from the collected columns from metastore.
+3. Finally returning the select query to the called function.
+'''
+def select_fact_columns(sqlContext,source_columns,source_db_name,source_tablename,source_tablename_alias,source_columns_excluded):
+        global LOGGER
+        fact_query = ""
+        src_col_list = []
+        try:
+            if(len(source_columns) != 0):
+                    for column in source_columns:
+                        fact_query += source_tablename_alias + "." + column + ","
+            else:
+                LOGGER.info("Entering into else part")
+                src_col_list = sqlContext.table(source_db_name+'.'+source_tablename).columns
+                LOGGER.info("src_col_list are")
+                LOGGER.info(src_col_list)
+                if(len(source_columns_excluded) != 0):
+                    for i in range(len(source_columns_excluded)):
+                        if(source_columns_excluded[i] in src_col_list):
+                            src_col_list.remove(source_columns_excluded[i])
+                        else:
+                            pass
+                for column in src_col_list:
+                    fact_query += source_tablename_alias + "." + column + ","
+
+            fact_query = fact_query.rstrip(",")
+            return fact_query
+        except:
+            LOGGER.error("Error occured in select_fact_columns method due to {}".format(sys.exc_info()))
+
+'''
+1. Creating the dimension query based on the dimension list configured and return the dimension query
+2. Returning the empty value if dimension list is empty
+'''
+def select_dim_columns(dim_list):
+        dim_column_list_query = ""
+        global LOGGER
+        try:
+            if(len(dim_list) != 0):
+                for dim in dim_list:
+                        if(dim['alias_name'] != "" and dim['dim_columnname'] != "" and dim['dim_columnname_alias'] != ""):
+                            dim_column_list_query += "," + dim['alias_name'] + "." + dim['dim_columnname'] + " as " + dim['dim_columnname_alias']
+                        elif(dim['alias_name'] != "" and dim['dim_columnname'] != "" and dim['dim_columnname_alias'] == ""):
+                            dim_column_list_query += "," + dim['alias_name'] + "." + dim['dim_columnname']
+                        elif(dim['alias_name'] == "" and dim['dim_columnname'] != "" and dim['dim_columnname_alias'] != ""):
+                            dim_column_list_query += ",'" + dim['dim_columnname'] + "' as " + dim['dim_columnname_alias']
+                        else:
+                            pass
+            else:
+                LOGGER.info("There is no dimension columns are configured")
+            return dim_column_list_query
+        except:
+            LOGGER.error("Error occured in select_dim_columns method due to {}".format(sys.exc_info()))
+
+#Definition to convert input column from config file to respective datatype
+def convert_to_timestamp(in_col):
+        LOGGER.info('Column '+in_col+' typecasting to timestamp')
+        op_col = 'CAST('+in_col+' as TIMESTAMP) as '+ in_col
+        return op_col
+
+def column_typeCast(in_col, datatype):
+        op_col = 'CAST('+in_col+' as '+datatype+') as '+ in_col
+        return op_col
+
+def convert_to_int(in_col):
+        LOGGER.info('Column '+in_col+' typecasting to int')
+        op_col = 'CAST('+in_col+' as INT) as '+ in_col
+        return op_col
+
+def convert_to_double(in_col):
+        LOGGER.info('Column '+in_col+' typecasting to double')
+        op_col = 'CAST('+in_col+' as DOUBLE) as '+ in_col
+        return op_col
+
+def convert_to_string(in_col):
+        op_col = 'CAST('+in_col+' as STRING) as '+in_col
+        return op_col
+
+def convert_to_decimal(in_col,datatype):
+        LOGGER.info('Column '+m+' type to Decimal')
+        op_col = 'CAST('+in_col+' as \\'+datatype+') as '+in_col
+        return op_col
+
+#This function handles de logic based on the flag set in config file and dedupe config in config file
+def dedupe(partition_by_col,order_by_col,src_db_name,src_tbl_name):
+        op_col = 'ROW_NUMBER() OVER (PARTITION BY '+partition_by_col+' ORDER BY FROM_UNIXTIME(UNIX_TIMESTAMP('+order_by_col+',\'yyyy-MM-dd HH:mm:ss\'),\'yyyy-MM-dd HH:mm:ss\') DESC) AS row_num FROM '+src_db_name+'.'+src_tbl_name+')a WHERE row_num = 1'
+        return op_col
+
+def loadProperties(propertyFilePath):
+        common_properties = spark.sparkContext.textFile(propertyFilePath).collect()
+        buf = StringIO.StringIO("\n".join(common_properties))
+        config = ConfigParser.ConfigParser()
+        config.readfp(buf)
+        propItems = OrderedDict(config.items("FileProperties"))
+        return propItems
+
+'''
+This method is used to perform invalidate metadata for the view.
+'''
+def invalidate_metadata(target_view_dbname,target_view_name,data_node):
+        global LOGGER
+        try:
+            query = "invalidate metadata {}".format(target_view_dbname + "." + target_view_name)
+            result_string = 'impala-shell -i '+ data_node +' -q "'+query+'"'
+            status, output = commands.getstatusoutput(result_string)
+            if status == 0:
+                    LOGGER.info("Invalidate metadata is done for the target view - {}".format(target_view_dbname + "." + target_view_name))
+            else:
+                    LOGGER.info("Error encountered while executing Invalidate metadata for the view {}".format(target_view_dbname + "." + target_view_name))
+
+        except:
+            LOGGER.error("Error occured in invalidate_metadata method, Error message is {}".format(sys.exc_info()))
+            LOGGER.error("Input parameters are target_view_dbname- {}, target_view_name - {}, data_node - {}".format(target_view_dbname,target_view_name,data_node))
+
+def get_DbName(priority_obj, secondary_obj):
+        if(priority_obj != ''):
+                db_name = priority_obj
+                LOGGER.info('DB Name set in table config file  ' + db_name)
+        else:
+                db_name = secondary_obj
+                LOGGER.info('DB Name is not configured in table config, using the default DB name from common config ' + db_name)
+        return db_name
+
+def exec_and_assign(dim_config,consumption_config,columnlist_path,common_source_dbname,db_suffix):
+        global src_db_name
+        global col_list
+        global src_tbl_name
+        global target_db_name
+        global target_view_name
+        global dedupe_flag
+        global dedupe_col
+        global src_col_list
+        global data_node
+        global dim_file_config
+        global typecast_config
+        global common_config_file
+        global target_view_conformation_list
+        
+        LOGGER.info("Dimension Config file path - {}".format(dim_config))
+        dim_file_config = hdfs_exec(dim_config)
+        exec(dim_file_config)
+        LOGGER.info("Dimension Config file executed Successfully..!!")
+
+        LOGGER.info("Table Specific Configuration file path - {}".format(consumption_config))
+        consumption_config_data = hdfs_exec(consumption_config)
+        exec(consumption_config_data)
+        LOGGER.info("Table Specific Configuration executed Successfully..!!")
+        LOGGER.info(TypeCasting)
+        try:
+            LOGGER.info(len(TypeCasting))
+        except:
+            LOGGER.info("Dictionary - {} is not present in Table Configuration".format(TypeCasting))
+            sys.exit(1)	        
+        else:
+                src_db_name = getProperty.checkProperty(TypeCasting,"sourcedbname",common_source_dbname)
+                src_db_name = src_db_name + db_suffix
+                LOGGER.info("src_db_name is - {}".format(src_db_name))
+        
+                src_tbl_name = getProperty.checkProperty_mandatory(TypeCasting, "sourcetablename")
+                LOGGER.info('Source Table  Name is  ' + src_tbl_name)
+                
+                if(columnlist_path != ""):
+                    col_listpath = getProperty.checkCommonKey(columnlist_path)
+                    col_list = col_listpath + src_tbl_name + "_columnlist.prm"
+                else:
+                    LOGGER.info("Column list path - {} is not mentioned in common property file".format(columnlist_path))
+                    sys.exit(1)	
+                    
+                try:
+                    LOGGER.info(len(Dedupe))
+                except:
+                    LOGGER.info("Dedupe is not configured in Table configuration. So please ignore dedupe for this table..")
+                else:                                    
+                    dedupe_col = getProperty.checkProperty_mandatory(Dedupe, "dedupecolumns")
+                #Check if the src table exists
+                if(spark.catalog._jcatalog.tableExists(src_db_name+'.'+src_tbl_name)):
+                        src_col_list = sqlContext.table(src_db_name+'.'+src_tbl_name)
+                else:
+                        LOGGER.error(''+src_tbl_name+' does not exists in  '+src_db_name)
+
+'''
+This method is used to read common properties file
+'''
+def read_common_property(common_property):
+        global LOGGER
+        try:
+                common_properties = spark.sparkContext.textFile(common_property).collect()
+                buf = StringIO.StringIO("\n".join(common_properties))
+                properties = ConfigParser.ConfigParser()
+                properties.readfp(buf)
+                return properties
+        except:
+                LOGGER.info("Error occured in read_common_property method. please check logs for further debugging")
+
+'''
+This method is used to read configuration data from HDFS
+'''
+def read_configdata(filename):
+        try:
+                with hdfs.open(filename, 'r') as f:
+                        filename = f.read()
+                return filename
+        except IOError:
+                LOGGER.info("config file - '{0}' is not found".format(filename))
+
+'''
+This method is used to validate the mandatory properties in the config files
+'''
+def mandatory_config_validation(property,property_name):
+        try:
+                if(property != ""):
+                        return property
+                else:
+                        LOGGER.info("{} - property is not configured".format(property_name))
+                        sys.exit()
+        except:
+                LOGGER.info("{} - property is not available in the config file".format(property_name))
+                sys.exit()
+
+'''
+This method is used to assigning the property values to the global variables which will be used across the framework
+'''
+def assign_values(table_config, table_name, dim_config,common_source_dbname,common_target_dbname,foundation_source_tablename_alias,db_suffix):
+        global target_view_dbname
+        global target_view_name
+        global source_db_name
+        global source_tablename
+        global source_tablename_alias
+        global source_columns
+        global source_columns_excluded
+        global where_condition
+        global apply_distinct
+        global dim_list
+        global LOGGER
+
+        try:
+            dim_config_data = hdfs_exec(dim_config)
+            exec(dim_config_data)
+            LOGGER.info("Dimension config executed successfully..!!")
+            
+            try:
+                LOGGER.info(len(table_config))
+            except:
+                LOGGER.info("Dictionary - {} is not present in Table Configuration".format(table_config))
+                sys.exit(1)	
+            else:            
+                LOGGER.info("Entered into assign_values method..!!")
+                target_view_dbname = getProperty.checkProperty(table_config,"target_view_dbname",common_target_dbname)
+                target_view_dbname = target_view_dbname + db_suffix
+                LOGGER.info("target_view_dbname is {}".format(target_view_dbname))
+       
+                target_view_name_exists = getProperty.checkProperty_viewname(table_config, "target_view_name")       
+                if(target_view_name_exists == ""):
+                    target_view_name = target_viewname_creation_dim.createTargetViewName(dim_config, target_view_dbname, table_name)
+                    LOGGER.info("target_view_name is {}".format(target_view_name))
+                else:
+                    target_view_name = target_view_name_exists
+                    LOGGER.info("target_view_name is {}".format(target_view_name))
+       
+                source_db_name = getProperty.checkProperty(table_config,"source_db_name",common_source_dbname)
+                source_db_name = source_db_name + db_suffix
+                LOGGER.info("source_db_name is {}".format(source_db_name))
+                
+                targetviewname_exists = getProperty.checkProperty_viewname(table_config, "targetviewname")
+                if(targetviewname_exists != ""):
+                    source_tablename = table_config["targetviewname"]
+                    LOGGER.info("source_tablename is {}".format(source_tablename))
+                else:
+                    source_tablename = target_viewname_creation_dim.createTargetViewName(dim_config, source_db_name, table_name)
+                    LOGGER.info("source_tablename is {}".format(source_tablename))
+                
+                source_tablename_alias_exists = getProperty.checkProperty_viewname(table_config, "source_tablename_alias")
+                if(source_tablename_alias_exists == ""):
+                    if(foundation_source_tablename_alias == ""):
+                        LOGGER.info("There is no foundation_source_tablename_alias is configured in common property file.")
+                        sys.exit(1)
+                    else:
+                        source_tablename_alias = foundation_source_tablename_alias
+                        LOGGER.info("source_tablename_alias is {}".format(source_tablename_alias))
+                else:
+                    source_tablename_alias = mandatory_config_validation(source_tablename_alias_exists, "source_tablename_alias")
+                    LOGGER.info("source_tablename_alias is {}".format(source_tablename_alias))
+                
+                source_columns_exists = getProperty.checkProperty_viewname(table_config, "source_columns")
+                if(source_columns_exists != ""):
+                    source_columns = table_config['source_columns']
+                else:
+                    source_columns = []
+                LOGGER.info("source_columns is {}".format(source_columns))
+       
+                source_columns_excluded_exists = getProperty.checkProperty_viewname(table_config, "source_columns_excluded")
+                if(source_columns_excluded_exists != ""):
+                    source_columns_excluded = table_config['source_columns_excluded']
+                else:
+                    source_columns_excluded = []
+                LOGGER.info("source_columns_excluded is {}".format(source_columns_excluded))
+                
+                fact_where_condition_exists = getProperty.checkProperty_viewname(table_config, "fact_where_condition")
+                if(fact_where_condition_exists != ""):
+                    where_condition = table_config['fact_where_condition']
+                    where_condition = where_condition.replace(".", db_suffix + ".")
+                else:
+                    where_condition = ""
+                LOGGER.info("where_condition is {}".format(where_condition))
+                
+                fact_distinct_exists = getProperty.checkProperty_viewname(table_config, "fact_distinct")
+                if(fact_distinct_exists == "Y"):
+                    apply_distinct = table_config['fact_distinct']
+                else:
+                    apply_distinct = ""
+                LOGGER.info("apply_distinct is {}".format(apply_distinct))
+                
+                dimension_list_exists = getProperty.checkProperty_viewname(table_config, "dimension_list")
+                if(dimension_list_exists != ""):
+                    dim_list = table_config['dimension_list']
+                else:
+                    dim_list = []
+                LOGGER.info("dim_list is {}".format(dim_list))
+        except:
+            LOGGER.error("Error occured in assign_values method due to {}".format(sys.exc_info()))
+
+#Main Function:
+#1. This reads the columlist file from config file, returns a dict object with column name as and datatype as value
+#2. The loop tries to match the column within paramlist key with src column names and if the data is either Timestamp , Double ,Int or decimal the respective defination iis called by the passing the param key object and it is appened to typecast_df variable
+#3. Based on the dedupe flag value
+#4. The typecast_df is used to create the typecasted view
+# dim_config,consumption_config,data_node,columnlist_path,common_source_dbname,common_target_dbname
+def main(dim_config, consumption_config, data_node, columnlist_path,common_source_dbname,common_target_dbname,foundation_source_tablename_alias,db_suffix):
+        global spark
+        global LOGGER
+        global target_view_dbname
+        global target_view_name
+        global source_db_name
+        global source_tablename
+        global source_tablename_alias
+        global consumption_db_name
+        global consumption_view_name
+        global source_columns
+        global source_columns_excluded
+        global where_condition
+        global apply_distinct
+        global dim_list
+        global src_col_list
+        global distinct_query
+
+        LOGGER.info("Dimension Config file path - {}".format(dim_config))
+        dim_file_config = hdfs_exec(dim_config)
+        exec(dim_file_config)
+        LOGGER.info("Dimension Config file executed Successfully..!!")
+
+        LOGGER.info("Table Specific Configuration file path - {}".format(consumption_config))
+        consumption_config_data = hdfs_exec(consumption_config)
+        exec(consumption_config_data)
+        LOGGER.info("Table Specific Configuration executed Successfully..!!")
+
+        config_list = target_view_conformation_list
+        LOGGER.info("Number of target view conformation is {}".format(len(target_view_conformation_list)))
+        
+        for config in config_list:        
+            LOGGER.info("exec_and_assign method is calling..")
+            exec_and_assign(dim_config,consumption_config,columnlist_path,common_source_dbname,db_suffix)
+            LOGGER.info("exec_and_assign method process is completed..!!..")
+            
+            LOGGER.info("Source Column Names are - {}".format(src_col_list))
+            
+            src_col_names = src_col_list.schema.names
+            src_col_dict= OrderedDict(src_col_list.dtypes)
+            paramlist=OrderedDict()
+            try:
+                with hdfs.open(col_list, 'r') as column_list:
+                                line= column_list.read()
+                                for k,v in (element.split(',',1) for element in line.split()):
+                                        paramlist[k.strip()] = v.strip()
+            except IOError:
+                            LOGGER.error(str(datetime.now())+" Could not find file or read data")
+            except ValueError:
+                            LOGGER.error(str(datetime.now())+" too many values to unpack")
+            except:
+                            LOGGER.info(sys.exc_info()[0])
+            else:
+                typecast_df=''
+                try:
+                    for m,n in src_col_dict.items():
+                                    if paramlist.get(m) == 'double':
+                                                    typecast_df += convert_to_double(m)+','
+                                    elif paramlist.get(m) == 'int':
+                                                    typecast_df += convert_to_int(m)+','
+                                    elif paramlist.get(m) == 'timestamp':
+                                                    typecast_df += convert_to_timestamp(m)+','
+                                    elif paramlist.get(m) is None:
+                                                    LOGGER.info('Column '+m+' as in source')
+                                                    typecast_df += column_typeCast(m,n)+','
+                                    elif paramlist.get(m) == 'Decimal*':
+                                                    typecast_df += convert_to_decimal(m,paramlist.get(m))+','
+                                    else:
+                                                    LOGGER.info('Column '+m+' typecasting to '+paramlist.get(m))
+                                                    typecast_df += column_typeCast(m,paramlist.get(m))+','
+                except KeyError:
+                                LOGGER.error("Key Not found " + m)
+                else:
+                    #LOGGER.info('TypeCast DF before Dedupe ', typecast_df)
+                    #if dedupe_flag!='Y':
+                    LOGGER.info('No dedupe required')
+                    typecast_df = typecast_df.rstrip(',')
+                                    #LOGGER.info('TypeCast DF after Dedupe ', typecast_df)
+                    #else:
+                    #               LOGGER.info('DEDUPE flas is Y')
+                                    #partition_col,order_by_col = dedupe_col.strip().split(',')
+                                    #typecast_df =typecast_df+' '+dedupe(partition_col,order_by_col,src_db_name,src_tbl_name)
+                    LOGGER.info('***************************************Dimension conformation **********************************')
+                    dim_config_data = read_configdata(dim_config)
+                    exec(dim_config_data)
+                    #LOGGER.info('DIM Config: {} '.format(dim_config_data))
+                    #Checking whether consumption(Fact) config file exists or not
+                    LOGGER.info('Consumption Config : {}'.format(consumption_config))
+                    LOGGER.info(os.path.basename(consumption_config)[0])
+                    LOGGER.info(os.path.splitext(os.path.basename(consumption_config))[0].replace('_config',''))
+                    table_name = os.path.splitext(os.path.basename(consumption_config))[0].replace('_config','')
+                    consumption_config = read_configdata(consumption_config)
+                    exec(consumption_config)
+
+                    LOGGER.info("table name is {}".format(table_name))
+
+                    try:
+                        #Assigning the values to global variables from config files
+                        LOGGER.info("The Arguments of assign_values method are..!")
+                        LOGGER.info("Configuration of the corresponding Target view conformation is - {}".format(config))                        
+                        LOGGER.info("Table name is - {}".format(table_name))
+                        LOGGER.info("dim_config path is - {}".format(dim_config))
+                        LOGGER.info("common_source_dbname is - {}".format(common_source_dbname))
+                        LOGGER.info("common_target_dbname is - {}".format(common_target_dbname))
+                        LOGGER.info("foundation_source_tablename_alias is - {}".format(foundation_source_tablename_alias))
+                        LOGGER.info("db_suffix is - {}".format(db_suffix))
+                        assign_values(config, table_name, dim_config,common_source_dbname,common_target_dbname,foundation_source_tablename_alias,db_suffix)
+                        #creating the initial query of the view
+                        initial_query = "create or replace view " + target_view_dbname + "." + target_view_name + " as select "
+                        LOGGER.info("initial_query is {}".format(initial_query))
+
+                        # Creating the fact column query with typecasted columns
+                        fact_col_query = typecast_df.rstrip(',')
+                        LOGGER.info("fact_col_query is {}".format(fact_col_query))
+
+                        #Calling select_dim_columns function for getting the dimenion select query
+                        dim_col_query = select_dim_columns(dim_list)
+                        LOGGER.info("dim_col_query is {}".format(dim_col_query))
+                        
+                        # Creating the Fact table query with alias
+                        fact_table_query = " from " + source_db_name + "." + source_tablename + " as " + source_tablename_alias
+                        LOGGER.info("fact_table_query is {}".format(fact_table_query))
+
+                        #The below part will be handling the dimension tables query creation
+                        dim_table_query = ""
+                        dim_on_condition_value = ""
+                        for i in range(len(dim_list)):
+                                for k,v in locals().items():
+                                        if v == dim_list[i]:
+                                                        dim_on_condition = k + "_on_condition"
+                                                        if(dim_on_condition != "v_on_condition"):
+                                                                        dim_on_condition_value = config[dim_on_condition]
+                                                                        LOGGER.info(dim_on_condition_value)
+                                                                        temp_query = v['join'] + " " + v['table_name'] + " " + v['alias_name'] + " on " + dim_on_condition_value
+                                                                        table_exits =  False
+                                                                        if(temp_query in dim_table_query):
+                                                                                        table_exits = True
+                                                                        if(table_exits == False):
+                                                                                        if(v['table_name'] != ""):
+                                                                                                        if(v['join'] != ""):
+                                                                                                                        dim_table_query += " " + v['join']
+                                                                                                        if(v['table_name'] != ""):
+                                                                                                                        v['table_name'] = v['table_name'].replace(".",  db_suffix + ".")
+                                                                                                                        dim_table_query += " " + v['table_name']
+                                                                                                        if(v['alias_name'] != ""):
+                                                                                                                        dim_table_query += " " + v['alias_name']
+                                                                                                        if(dim_on_condition_value != ""):
+                                                                                                                        dim_table_query += " on " + dim_on_condition_value
+                        LOGGER.info("dim_table_query is {}".format(dim_table_query))
+
+                        # Including the where condition with target view level
+                        if(where_condition != ""):
+                                where_query = " where " + where_condition
+                                LOGGER.info("where_query is {}".format(where_query))
+                        else:
+                                where_query = ""
+                                LOGGER.info("where condition is not applicable")
+                          
+                        # Including the Distinct if distinct is configured in Table specific
+                        if(apply_distinct == "Y"):
+                                distinct_query = " distinct "
+                        else:
+                                distinct_query = ""
+
+                        #Combining all piece of queries into final view query.
+                        view_query = initial_query + " " + distinct_query + " " + fact_col_query + dim_col_query + fact_table_query + dim_table_query + where_query
+                        LOGGER.info("Complete final view query is - {}".format(view_query))
+
+                        #Executing the view query using SQLContext
+                        sqlContext.sql(view_query)
+                        LOGGER.info("Final view query is executed successfully..!!")
+                    except:
+                             LOGGER.error("Final target view - '{0}' is not created due to the unexcepted error {1}".format(target_view_dbname + "." + target_view_name, sys.exc_info()))
+                             sys.exit(1)
+                    else:
+                             LOGGER.info("Final target view - '{}' is created Successfully..!!".format(target_view_dbname + "." + target_view_name))
+                             invalidate_metadata(target_view_dbname,target_view_name,data_node)
+                             LOGGER.info("dimension_conformation_is_completed_successfully")
+                             sys.exit(0)
+
+if __name__=="__main__":
+        global spark
+        spark = SparkSession.builder.appName("Combined Logical view creation").config(conf=SparkConf()).getOrCreate()
+        hiveContext = HiveContext(spark)
+        sqlContext = SQLContext(spark)
+        typecast_config=''
+        #Setting up logger level
+        log4jLogger = spark._jvm.org.apache.log4j
+        LOGGER = getLogger('COMBINED_VIEW_CREATION_LOGGER')
+        LOGGER.info("Data Type Casting Started..!!")
+        #Reading the parameters and calling main method
+        dim_config = sys.argv[1]
+        consumption_config = sys.argv[2]        
+        data_node = sys.argv[3]
+        columnlist_path = sys.argv[4]
+        common_source_dbname = sys.argv[5]
+        common_target_dbname = sys.argv[6]
+        foundation_source_tablename_alias = sys.argv[7]
+        db_suffix = sys.argv[8]
+        LOGGER.info("dim_config is {}".format(dim_config))
+        LOGGER.info("consumption_config is {}".format(consumption_config))
+        LOGGER.info("data_node is {}".format(data_node))
+        LOGGER.info("columnlist_path is {}".format(columnlist_path))
+        LOGGER.info("common_source_dbname is {}".format(common_source_dbname))
+        LOGGER.info("common_target_dbname is {}".format(common_target_dbname))
+        LOGGER.info("foundation_source_tablename_alias is {}".format(foundation_source_tablename_alias)) 
+        LOGGER.info("db_suffix is {}".format(db_suffix))         
+        LOGGER.info('Calling Main function ')
+        main(dim_config,consumption_config,data_node,columnlist_path,common_source_dbname,common_target_dbname,foundation_source_tablename_alias,db_suffix)

@@ -1,0 +1,204 @@
+#!/bin/bash
+
+if [ $# -ne 2 ]; then
+        echo "Incorrect number of arguments are passed. so exit from the process."
+        exit 1
+else
+        echo "expected number of arguments are passed. Good to go..!"
+fi
+
+#Reading the arguments
+common_property_file_path=$1
+echo ${common_property_file_path}
+
+table_name=$2
+echo ${table_name}
+
+USER=`printenv HCP360_USER`
+ENVIRONMENT=`printenv HCP360_ENVIRONMENT`
+QUEUE_NAME=`printenv HCP360_QUEUE_NAME`
+DATA_NODE=`printenv HCP360_DATA_NODE`
+DBSUFFIX=`printenv HCP360_DBSUFFIX`
+
+
+#Source the common property file
+. ${common_property_file_path}
+
+if [ "$?" != "0" ]; then
+    echo "${common_property_file_path} is not sourced properly. Please check."
+    exit 1
+else
+    echo "${common_property_file_path} is sourced successfully..!! Good to Go..!!"
+fi
+
+DBSUFFIX_ACTUAL=${DBSUFFIX}
+DBSUFFIX=dbsuffix${DBSUFFIX_ACTUAL}
+echo "DBSUFFIX value is "${DBSUFFIX}
+
+echo "columnlist_path path is - " ${columnlist_path}
+echo "keyTabName is - " ${keyTabName}
+echo "KeyTabPricipal is - " ${KeyTabPricipal}
+echo "table_config_path is - " ${table_config_path}
+echo "dimension_config is - " ${dimension_config}
+echo "foundation_python_file is - " ${foundation_python_file}
+echo "queue_name is - " ${queue_name}
+echo "data_node is - " ${data_node}
+echo "typecast_source_dbname is - " ${typecast_source_dbname}
+echo "typecast_target_dbname is - " ${typecast_target_dbname}
+echo "dc_source_dbname is - " ${dc_source_dbname}
+echo "dc_target_dbname is - " ${dc_target_dbname}
+echo "consumption_source_dbname is - " ${consumption_source_dbname}
+echo "consumption_target_dbname is - " ${consumption_target_dbname}
+
+#Kerberos Initialization
+kinit -kt ${keyTabName} ${KeyTabPricipal}
+
+if [ "$?" != "0" ]; then
+    echo "Kerberos Authorization Failed"
+    exit 1
+else
+    echo "Kerberos Authorization Successful"
+fi
+
+datatypecasting=N
+dimensionconformation=N
+consumptionview=N
+integrated=N
+
+#Validating table name is not empty
+hdfs dfs -test -e ${table_name}
+if [ -z "${table_name}" ]; then
+    echo "${table_name} is not valid"
+    exit 1
+else
+    consumption_config_file=${table_config_path}/${table_name}"_config.prm"
+    hdfs dfs -test -e ${consumption_config_file}
+    if [ "$?" != "0" ]; then
+            echo "${consumption_config_file} is missing"
+                        exit 1
+    else
+        typeCast_table_flag=`hdfs dfs -cat ${consumption_config_file} | grep enable_datatypecasting | cut -d "=" -f2 | xargs`
+        dimension_conformation_table_flag=`hdfs dfs -cat ${consumption_config_file} | grep enable_dimensionconformation | cut -d "=" -f2 | xargs`
+        integrated_table_flag=`hdfs dfs -cat ${consumption_config_file} | grep enable_integrated | cut -d "=" -f2 | xargs`
+        consumption_table_flag=`hdfs dfs -cat ${consumption_config_file} | grep enable_consumptionview | cut -d "=" -f2 | xargs`
+
+        echo "typeCast_table_flag in table configuration is - "${typeCast_table_flag}
+        echo "dimension_conformation_table_flag in table configuration is - "${dimension_conformation_table_flag}
+        echo "integrated_table_flag in table configuration is - "${integrated_table_flag}
+        echo "consumption_table_flag in table configuration is - "${consumption_table_flag}
+
+        if [ "${typeCast_table_flag}" != "" ]; then
+                datatypecasting=${typeCast_table_flag}
+        elif [ "${enable_datatypecasting}" != "" ]; then
+                datatypecasting=${enable_datatypecasting}
+        fi
+
+        if [ "${dimension_conformation_table_flag}" != "" ]; then
+                dimensionconformation=${dimension_conformation_table_flag}
+        elif [ "${enable_dimensionconformation}" != "" ]; then
+                dimensionconformation=${enable_dimensionconformation}
+        fi
+
+        if [ "${integrated_table_flag}" != "" ]; then
+                integrated=${integrated_table_flag}
+        elif [ "${enable_integrated}" != "" ]; then
+                integrated=${enable_integrated}
+        fi
+
+        if [ "${consumption_table_flag}" != "" ]; then
+                consumptionview=${consumption_table_flag}
+        elif [ "${enable_consumptionview}" != "" ]; then
+                consumptionview=${enable_consumptionview}
+        fi
+
+        echo "datatypecasting is - " ${datatypecasting}
+        echo "dimensionconformation is - " ${dimensionconformation}
+        echo "consumptionview is - " ${consumptionview}
+        echo "integrated is - " ${integrated}
+
+        #Handling the Combined view creation (Both Datatype casting and Dimension conformation in Single view)
+        if [ "${integrated}" == "Y" ]; then
+                echo "Combined view creation process is started for the table_name - ${table_name}"
+                echo "Started time - "`date '+%Y-%m-%d_%H:%M:%S'`
+                                echo ${foundation_python_file}
+                echo "spark2-submit --master ${master} --deploy-mode ${deploy_mode} --num-executors ${num_executors} --executor-cores ${executor_cores} --executor-memory ${executor_memory} --driver-memory ${driver_memory} --queue ${queue_name} ${foundation_python_file} ${dimension_config} ${consumption_config_file} ${data_node} ${columnlist_path} ${typecast_source_dbname} ${dc_target_dbname} ${foundation_source_tablename_alias} ${DBSUFFIX}"
+
+                spark2-submit --master ${master} --deploy-mode ${deploy_mode} --num-executors ${num_executors} --executor-cores ${executor_cores} --executor-memory ${executor_memory} --driver-memory ${driver_memory} --queue ${queue_name} ${foundation_python_file} ${dimension_config} ${consumption_config_file} ${data_node} ${columnlist_path} ${typecast_source_dbname} ${dc_target_dbname} ${foundation_source_tablename_alias} ${DBSUFFIX} 2>&1
+
+                if [ $? != 0 ]; then
+                        echo "Error: Combined view creation job failed for the table_name - ${table_name}, Please check the log file for further debugging"
+                        exit 1
+                else
+                        echo "Combined view creation process is completed for the table_name - ${table_name}"
+                        echo "Ended time - "`date '+%Y-%m-%d_%H:%M:%S'`
+                fi
+        else
+                    echo "Combined view creation process is disabled for ${table_name}"
+        fi
+
+        #Handling the Datatype casting view creation
+        if [ "${datatypecasting}" == "Y" ]; then
+                    echo "Data type casting process is started for the table_name - ${table_name}"
+                    echo "Started time - "`date '+%Y-%m-%d_%H:%M:%S'`
+                    echo "spark2-submit --master ${master} --deploy-mode ${deploy_mode} --num-executors ${num_executors} --executor-cores ${executor_cores} --executor-memory ${executor_memory} --driver-memory ${driver_memory} --queue ${queue_name} ${typecasting_python_file} ${consumption_config_file} ${dimension_config} ${data_node} ${columnlist_path} ${typecast_source_dbname} ${typecast_target_dbname} ${foundation_source_tablename_alias} ${DBSUFFIX}"
+
+                    spark2-submit --master ${master} --deploy-mode ${deploy_mode} --num-executors ${num_executors} --executor-cores ${executor_cores} --executor-memory ${executor_memory} --driver-memory ${driver_memory} --queue ${queue_name} ${typecasting_python_file} ${consumption_config_file} ${dimension_config} ${data_node} ${columnlist_path} ${typecast_source_dbname} ${typecast_target_dbname} ${foundation_source_tablename_alias} ${DBSUFFIX} 2>&1
+
+                    if [ $? != 0 ]; then
+                            echo "Error: Data type casting job failed for the table_name - ${table_name}, Please check the log file for further debugging"
+                            exit 1
+                    else
+                            echo "Data type casting process is completed for the table_name - ${table_name}"
+                            echo "Ended time - "`date '+%Y-%m-%d_%H:%M:%S'`
+                    fi
+        else
+                    echo "Data TypeCasting is disabled for ${table_name}"
+        fi
+
+        #Handling the Dimension Conformation view creation
+        if [ ${dimensionconformation} == "Y" ]; then
+                    echo "Dimension conformation process is started for the table_name - ${table_name}"
+                    echo "Started time - "`date '+%Y-%m-%d_%H:%M:%S'`
+
+                    echo "spark2-submit --master ${master} --deploy-mode ${deploy_mode} --num-executors ${num_executors} --executor-cores ${executor_cores} --executor-memory ${executor_memory} --driver-memory ${driver_memory} --queue ${queue_name} ${dim_conformation_pythonfile} ${dimension_config} ${consumption_config_file} ${data_node} ${dc_source_dbname} ${dc_target_dbname} ${foundation_source_tablename_alias} ${DBSUFFIX}"
+
+                    spark2-submit --master ${master} --deploy-mode ${deploy_mode} --num-executors ${num_executors} --executor-cores ${executor_cores} --executor-memory ${executor_memory} --driver-memory ${driver_memory} --queue ${queue_name} ${dim_conformation_pythonfile} ${dimension_config} ${consumption_config_file} ${data_node} ${dc_source_dbname} ${dc_target_dbname} ${foundation_source_tablename_alias} ${DBSUFFIX} 2>&1
+
+
+                    if [ $? != 0 ]; then
+                                            echo "Error: Dimension conformation job is failed for the table_name - ${table_name}, Please check the log file for further debugging"
+                                            exit 1
+                    else
+                                    echo "Dimension conformation job is completed successfully for the table_name - ${table_name}"
+                                    echo "Ended time - "`date '+%Y-%m-%d_%H:%M:%S'`
+
+                    fi
+        else
+                    echo "Dimension conformation is not needed for the table_name - ${table_name}"
+        fi
+
+        #Handling the Publish Consumption view creation
+        if [ ${consumptionview} == "Y" ]; then
+                    echo "Publish Consumption View creation process is started for the table_name - ${table_name}"
+                    echo "Started time - "`date '+%Y-%m-%d_%H:%M:%S'`
+
+                    echo "spark2-submit --master ${master} --deploy-mode ${deploy_mode} --num-executors ${num_executors} --executor-cores ${executor_cores} --executor-memory ${executor_memory} --driver-memory ${driver_memory} --queue ${queue_name} ${publish_conformation_pythonfile} ${consumption_config_file} ${dimension_config} ${data_node} ${datatypecasting} ${dimensionconformation} ${integrated} ${typecast_source_dbname} ${typecast_target_dbname} ${dc_target_dbname} ${consumption_target_dbname} ${foundation_source_tablename_alias} ${DBSUFFIX}"
+
+                    spark2-submit --master ${master} --deploy-mode ${deploy_mode} --num-executors ${num_executors} --executor-cores ${executor_cores} --executor-memory ${executor_memory} --driver-memory ${driver_memory} --queue ${queue_name} ${publish_conformation_pythonfile} ${consumption_config_file} ${dimension_config} ${data_node} ${datatypecasting} ${dimensionconformation} ${integrated} ${typecast_source_dbname} ${typecast_target_dbname} ${dc_target_dbname} ${consumption_target_dbname} ${foundation_source_tablename_alias} ${DBSUFFIX}  2>&1
+
+
+                    if [ $? != 0 ]; then
+                                    echo "Error: Publish Consumption View creation job is failed for the table_name - ${table_name}, Please check the log file for further debugging"
+                                    exit 1
+                    else
+                                    echo "Publish Consumption View creation job is completed successfully for the table_name - ${table_name}"
+                                    echo "Ended time - "`date '+%Y-%m-%d_%H:%M:%S'`
+
+                    fi
+        else
+                    echo "Publish Consumption View creation is not needed for the table_name - ${table_name}"
+        fi
+
+    fi
+fi
+

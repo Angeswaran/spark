@@ -1,0 +1,58 @@
+enable_Datatypecasting = "Y"
+TypeCasting = {
+        "sourcedbname"                  : "abv_hcp360_irep_mgmt_refined",
+        "sourcetablename"               : "call2_detail_vod__c_ref",
+        "targetdbname"                  : "abv_hcp360_irep_mgmt",
+        "targetviewname"                : "",
+        "columnlist"                    : "hdfs://COPPROD/user/svc-cop-hcp360load-p/Resources/Properties/call2_detail_vod__c_ref_columnlist.prm",
+}
+
+Dedupe = {
+        "dedupeflag"                    : "Y",
+        "dedupecolumns"                 : "id,lastmodifieddate"
+}
+
+enable_publish_Consumption = "Y"
+publish_Consumption = {
+        "targetdbname"                  : "",
+        "targetviewname"                : "",
+}
+
+enable_Dimension_conformation = "Y"
+enable_Dim_Publish_Consumption = "Y"
+
+target_view_conformation1 = {
+        "target_view_dbname"                                            : "abv_hcp360_integrated_gm_work",
+        "target_view_name"                                              : "irep_call2_detail_vod__c_vw",
+        "source_db_name"                                                : "abv_hcp360_irep_mgmt",
+        "source_tablename"                                              : "call2_detail_vod__c_vw",
+        "consumption_db_name"                                           : "abv_hcp360_integrated_gm",
+        "consumption_view_name"                                         : "irep_call2_detail_vod__c_vw",
+        "source_columns"                                                : [],
+        "source_columns_excluded"                                       : [],
+        "source_tablename_alias"                                        : "fact",
+        "dimension_list"                                                : [src_system_name,irep_product,dds_mdm_product_identifier],
+        "src_system_name_on_condition"                                  : "",
+        "irep_product_on_condition"                                     : "fact.product_vod__c = irep_prod.id and irep_prod.isdeleted = 0",
+        "dds_mdm_product_identifier_on_condition"                       : "upper(irep_prod.name) = upper(prodxref.product_name)",
+        "fact_where_condition"                                          : "fact.call2_vod__c in (SELECT ca.id from abv_hcp360_irep_mgmt.call2_vod__c_vw ca where ca.organization_abv__c = 'Medical')"
+}
+
+target_view_conformation2 = {
+        "target_view_dbname"                                            : "abv_hcp360_integrated_work",
+        "target_view_name"                                              : "irep_call2_detail_vod__c_vw",
+        "source_db_name"                                                : "abv_hcp360_irep_mgmt",
+        "source_tablename"                                              : "call2_detail_vod__c_vw",
+        "consumption_db_name"                                           : "abv_hcp360_integrated",
+        "consumption_view_name"                                         : "irep_call2_detail_vod__c_vw",
+        "source_columns"                                                : [],
+        "source_columns_excluded"                                       : [],
+        "source_tablename_alias"                                        : "fact",
+        "dimension_list"                                                : [src_system_name,irep_product,dds_mdm_product_identifier],
+        "src_system_name_on_condition"                                  : "",
+        "irep_product_on_condition"                                     : "fact.product_vod__c = irep_prod.id and irep_prod.isdeleted = 0",
+        "dds_mdm_product_identifier_on_condition"                       : "upper(irep_prod.name) = upper(prodxref.product_name)",
+        "fact_where_condition"                                          : "fact.call2_vod__c in (SELECT ca.id from abv_hcp360_irep_mgmt.call2_vod__c_vw ca where ca.organization_abv__c <> 'Medical')"
+}
+
+target_view_conformation_list = [target_view_conformation1,target_view_conformation2]
