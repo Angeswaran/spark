@@ -1,0 +1,19 @@
+SrcDBName=mei_promotional_hcp360_refined
+SrcTableName=cr_attendeerpt_refined
+TgtDBName=mei_promotional_hcp360_work
+TgtTableName=cr_attendeerpt_history
+WorkDBName=mei_promotional_hcp360_work
+SrcPKColumns=attendeeid,programid
+TgtPKColumns=attendeeid,programid
+SrcCompareColumns=source_id,mealconsumed,attendeefirstname,attendeemi,attendeelastname,attendeesuffix,degree,businessname,affiliations,businessstreetaddress,businesscity,businessstate,businesszipcode,businesscountry,attendeetype,businessentitytype,professionaldesignation,source,spkrcounter,source_profile_id,abbvieid,affiliationcustomernumber,specialty,accountcustomernumber,accountcustomerrole,stagingid,imsnumber,abbottbestspecialty,statelicensenumber,statelicensenumber2,licensestate,licensestate2,menumber,npinumber,matchverified,educationalitemqty,islaemployee,ismnlicensed,isvtlicensed,ismalicensed,title,isnjlicensed,upi,rsvpid,rsvpsunmatchedid
+TgtCompareColumns=source_id,mealconsumed,attendeefirstname,attendeemi,attendeelastname,attendeesuffix,degree,businessname,affiliations,businessstreetaddress,businesscity,businessstate,businesszipcode,businesscountry,attendeetype,businessentitytype,professionaldesignation,source,spkrcounter,source_profile_id,abbvieid,affiliationcustomernumber,specialty,accountcustomernumber,accountcustomerrole,stagingid,imsnumber,abbottbestspecialty,statelicensenumber,statelicensenumber2,licensestate,licensestate2,menumber,npinumber,matchverified,educationalitemqty,islaemployee,ismnlicensed,isvtlicensed,ismalicensed,title,isnjlicensed,upi,rsvpid,rsvpsunmatchedid
+Source_filter_query=select * from mei_promotional_hcp360_refined.cr_attendeerpt_refined where dqm_status like "%good%"
+Target_filter_flag=Y
+Target_scd_filter_query=select * from mei_promotional_hcp360_work.cr_attendeerpt_history tgt where tgt.programid in (select programid from mei_promotional_hcp360_work.cr_programrpt_history p join (select min(from_unixtime(unix_timestamp(progdate,'MM/dd/yyyy'), 'yyyy-MM-dd')) as prog_date from mei_promotional_hcp360_refined.cr_programrpt_refined ) r where from_unixtime(unix_timestamp(p.progdate,'MM/dd/yyyy'), 'yyyy-MM-dd') >= r.prog_date)
+Target_scd_non_filter_query=select * from mei_promotional_hcp360_work.cr_attendeerpt_history tgt where tgt.programid in (select programid from mei_promotional_hcp360_work.cr_programrpt_history p join (select min(from_unixtime(unix_timestamp(progdate,'MM/dd/yyyy'), 'yyyy-MM-dd')) as prog_date from mei_promotional_hcp360_refined.cr_programrpt_refined ) r where from_unixtime(unix_timestamp(p.progdate,'MM/dd/yyyy'), 'yyyy-MM-dd') < r.prog_date)
+Partition_column=event_date_month
+Partition_query=select programid , from_unixtime(unix_timestamp(progdate,'MM/dd/yyyy'), 'yyyyMM') as event_date_month from  mei_promotional_hcp360_refined.cr_programrpt_refined
+PartitionsrcpkcolList=programid
+PartitiontgtpkcolList=programid
+workingtablepattern=rpt_history
+action_col=SCDType2_action

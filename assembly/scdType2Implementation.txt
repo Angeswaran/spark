@@ -1,0 +1,723 @@
+from pyspark import SparkContext,SparkConf,SQLContext,HiveContext
+from pyspark.sql import *
+from datetime import datetime, timedelta
+from pyspark.sql.types import *
+from pyspark.sql import functions as fxn
+from pyspark.sql.window import Window
+from pyspark.sql.functions import sha2, concat_ws, udf, lit, when, date_sub, col
+from pyspark.sql.functions import *
+from subprocess import call, check_output, CalledProcessError,Popen, PIPE
+from subprocess import *
+import shlex
+from datetime import datetime
+import copy
+import sys
+import scdType2_log as scd_log
+import socket
+import re
+
+logger = scd_log.get_module_logger("SCDType2")
+
+#To split the parameters into dictionaries
+def paramlist(filename):
+        cat = Popen(["hadoop", "fs", "-cat", filename], stdout=PIPE)
+        paramlist = {}
+        for line in cat.stdout:
+                k, v = line.strip().split("=",1)
+                paramlist[k.strip()] = v.strip()
+        return (paramlist)
+
+#To validate if the table is present in the database
+def tableValidation(sqlContext,dbName,tableName):
+        print("This step is for table validation")
+        if tableName in sqlContext.tableNames(dbName):
+                logger.debug("SCD_LOG_INFO : Table "+ tableName + " exists in database " + dbName)
+                return(0)
+        else:
+                logger.debug("SCD_LOG_INFO : Table " + tableName + " doesn't exist in " + dbName)
+                return(1)
+
+#To create a new dataframe for target with source structure with audit columns
+def newTgtCreation(sqlContext,spark_context,rdd):
+        tgtSchema = copy.deepcopy(rdd.schema)
+        tgtSchema = tgtSchema.add("checksum", StringType(), True).add("active_flag",StringType(),True).add("start_date", StringType(), True).add("end_date", StringType(), True)
+        tgtrdd = sqlContext.createDataFrame(spark_context.emptyRDD(),tgtSchema)
+        return(tgtrdd)
+
+#To validate if all columns are present in the dataframe
+def columnValidation(srcRDD, inputColumns):
+        paramColumn = inputColumns
+        if ( paramColumn.find(",") > 0 ):
+                colArray = [x for x in paramColumn.split(",")]
+        else:
+                colArray = [inputColumns]
+
+        logger.debug("SCD_LOG_INFO : Checking if columns are present in source and target table")
+        returnerror = 0
+        for i in colArray:
+                if ((i in srcRDD.columns) == True):
+                        logger.debug(i + " column exists in the table")
+                else:
+                        logger.debug(i + " doesn't present in the table. Please provide the correct column name")
+                        returnerror = 1
+        if (returnerror == 1 ): return(1)
+        else: return(0)
+
+
+#To rename the columns present in the dataframe
+def rddColumnRename(rdd, valueToAppend):
+        oldColumns = rdd.columns
+        for col in oldColumns:
+                rdd = rdd.withColumnRenamed(col, valueToAppend + '_' + col)
+        return(rdd)
+
+
+#To rename the columns passed as string in parameter file
+def columnRename(columnList, valueToAppend):
+        newcolumnList = valueToAppend + "_" + columnList
+        return(newcolumnList.replace(",", "," + valueToAppend + "_"))
+
+
+#Calculate the join condition based on the column provided in parameter file
+def joinCondition(srcPKColumnList, tgtPKColumnList, srcrdd, tgtrdd):
+        if (len(srcPKColumnList) == len(tgtPKColumnList)):
+                logger.debug("SCD_LOG_INFO : Join condition will be performed based on corresponding source and target primary key columns")
+                logger.debug("SCD_LOG_INFO : joinCondition srcrdd %d" %srcrdd.count() +  str(srcrdd.columns) )
+                logger.debug("SCD_LOG_INFO : joinCondition tgtrdd %d" % tgtrdd.count()  + str(tgtrdd.columns) )
+                cond = []
+                i = 0
+                while i < len(srcPKColumnList):
+                                print(srcPKColumnList[i] + " and " + tgtPKColumnList[i])
+                                cond.append(eval("srcrdd." + srcPKColumnList[i] + " == " + "tgtrdd." + tgtPKColumnList[i]))
+                                i += 1
+                print(cond)
+                return (cond)
+        else:
+                logger.debug("SCD_LOG_INFO : The number of columns provided for source and target primary keys are not same")
+                exit()
+
+#Join the data based on 2 rdds
+def joinTransform(srcrdd, tgtrdd, cond, join):
+        srcJoinTgt = srcrdd.join(tgtrdd, cond, join)
+        return (srcJoinTgt)
+
+
+#Convert the columns provided as string to list
+def createColumnList(columnString):
+        if ( columnString.find(",") > 0 ):
+                columnList = [x for x in columnString.split(",")]
+                #print(columnList)
+        else:
+                columnList = [columnString]
+                #print(columnList)
+        return(columnList)
+
+
+#Generate Hash key values based on set of columns
+def hashGenerator(rdd, column_list, ColumnName):
+        rddHash = rdd.withColumn(ColumnName, sha2(concat_ws("||",*rdd.select(column_list)),256))
+        return(rddHash)
+
+
+# doing union of multiple rdds
+def unionAll(*dfs):
+        return reduce(DataFrame.unionAll, dfs)
+
+
+
+#check Target Table Partition
+def check_partition(sqlContext,dbName,tableName):
+    partition_exists=sqlContext.sql("desc "+dbName+"."+tableName).rdd.map(lambda x:x[0]).filter(lambda x: x.startswith("# col_name")).collect()
+    if len(partition_exists)>0:
+           logger.debug("SCD_LOG_INFO : Table "+dbName+"."+tableName +" is partitioned" )
+           return(1)
+    else :
+           logger.debug("SCD_LOG_INFO : Table "+dbName+"."+tableName +" is not partitioned" )
+           return(0)
+
+
+#Hive execution command
+#def execHiveQuery(keyTab,principal,BELINECONNECTIONSTRING,query):
+#        ret=call(["kinit", "-kt", keyTab, principal])
+#        logger.debug("KeyTab: " + keyTab + "Pricipal: " + principal)
+#        if(ret==0):
+#                logger.debug("SCD_LOG_INFO : kerberos Successful")
+#        else:
+#                logger.debug("SCD_LOG_INFO : kerberos Failure")
+#        logger.debug("HOST NAME IS : " + socket.gethostname())
+#        logger.debug("SCD_LOG_INFO : Executing hive query : " + query)
+#        try:
+#                execute_cmd = "beeline -u " +BELINECONNECTIONSTRING+ " --hiveconf hive.variable.substitute=true --silent=false " + " -e " + "\""+query+"\""
+#                logger.debug("SCD_LOG_INFO : Executing beeline command : " + execute_cmd)
+#                return check_output(
+#                shlex.split(execute_cmd),
+#                stderr=STDOUT,
+#                shell=False, universal_newlines=True)
+#        except CalledProcessError as exc:
+#                error_string = "Function: execHiveQuery  Failed with " + str(exc.returncode)+ " " + str(exc.output)
+#                logger.debug("SCD_LOG_INFO : "+error_string)
+#                raise Exception(error_string)
+
+def execSparkQuery(sqlContext,query):
+         logger.debug("SCD_LOG_INFO : Executing hive query : " + query)
+         print(query)
+         try:
+                 qureyArray = [x for x in query.split(";\n")]
+                 print(qureyArray)
+                 i=0
+                 while(i<len(qureyArray)):
+                     if(i == len(qureyArray) - 1):
+                         sqlContext.sql(qureyArray[i])
+                     else:
+                         sqlContext.sql(qureyArray[i])
+                     i += 1
+         except CalledProcessError as exc:
+                 error_string = "Function: execSparkQuery  Failed with " + str(exc.returncode)+ " " + str(exc.output)
+                 logger.debug("SCD_LOG_INFO : "+error_string)
+                 raise Exception(error_string)
+
+def drop_temp_tables(sqlContext,tgtDBName,tgtTableName,WorkDBName,keyTab,principal,BELINECONNECTIONSTRING,queueName):
+
+        dropTempTable = "set mapred.job.queue.name="+queueName+";\n drop table if exists "+WorkDBName+"."+tgtTableName + "_temp"
+        execSparkQuery(sqlContext,dropTempTable)
+        dropNotTakenTempTable = "set mapred.job.queue.name="+queueName+";\n drop table if exists "+WorkDBName+"."+tgtTableName + "_not_taken_temp"
+        execSparkQuery(sqlContext,dropNotTakenTempTable)
+
+
+def audit_table_load(audit_table_str,auditTableHdfsPath,srcTableName):
+
+        hdfspath=auditTableHdfsPath+"/"+srcTableName+".txt"
+        p = Popen(['hdfs', 'dfs', '-appendToFile', '-', hdfspath], stdout=PIPE, stderr=PIPE, stdin=PIPE)
+        stdout, stderr = p.communicate(input=audit_table_str)
+        ret=p.returncode
+
+        if ret == 0:
+                logger.debug("SCD_LOG_INFO : Audit table entry for "+srcTableName+" has been appended to hdfs path: " +auditTableHdfsPath+"/"+srcTableName+".txt for the current load")
+                return True
+        else:
+                logger.debug("SCD_LOG_INFO : Audit table entry for "+srcTableName+" to hdfs path has failed")
+                return False
+
+
+# def save_df_to_hive(sqlContext,final_df,tgtDBName,tgtTableName,WorkDBName,keyTab,principal,BELINECONNECTIONSTRING,queueName):
+
+        # hist_stg_table=tgtTableName+"_stg"
+        # hist_p1_table=tgtTableName+"_p1"
+
+        # if(tableValidation(sqlContext,tgtDBName,tgtTableName) == 1):
+                # logger.debug("SCD_LOG_INFO : Creating History Table for the very first time..")
+                # final_df.write.mode('overwrite').format('parquet').saveAsTable(tgtDBName+"."+tgtTableName)
+        # else:
+                # logger.debug("SCD_LOG_INFO : At First Inserting new/update records to the History Stage Table..")
+                # if(tableValidation(sqlContext,tgtDBName,hist_stg_table) == 1):
+                        # logger.debug("SCD_LOG_INFO : Creating History Stage Table..")
+                        # final_df.write.mode('overwrite').format('parquet').saveAsTable(tgtDBName+"."+hist_stg_table)
+
+                        # #On successful insert into stage table
+                        # if(tableValidation(sqlContext,tgtDBName,hist_stg_table) == 0):
+                                # dropHistP1="set mapred.job.queue.name="+queueName+";\n drop table if exists "+WorkDBName+"."+hist_p1_table
+                                # execSparkQuery(sqlContext,dropHistP1)
+                                # renameHistToHistP1="set mapred.job.queue.name="+queueName+";\n alter table "+WorkDBName+"."+tgtTableName+" rename to "+WorkDBName+"."+hist_p1_table
+                                # execSparkQuery(sqlContext,renameHistToHistP1)
+                                # renameStgToHist="set mapred.job.queue.name="+queueName+";\n alter table "+WorkDBName+"."+hist_stg_table+" rename to "+WorkDBName+"."+tgtTableName
+                                                                # renameStgToHist="set mapred.job.queue.name="+queueName+";\n CREATE  TABLE "+WorkDBName+"."+tgtTableName+"  STORED AS PARQUET AS SELECT * FROM "+WorkDBName+"."+hist_stg_table+" ;"
+                                # execSparkQuery(sqlContext,renameStgToHist)
+                # else:
+                        # logger.debug("SCD_LOG_INFO : Dropping history stage table and re-loading into it..")
+                        # dropStage = "set mapred.job.queue.name="+queueName+";\n drop table if exists "+tgtDBName+"."+hist_stg_table
+                        # execSparkQuery(sqlContext,dropStage)
+                        # final_df.write.mode('overwrite').format('parquet').saveAsTable(tgtDBName+"."+hist_stg_table)
+
+                        # #On successful insert into stage table
+                        # if(tableValidation(sqlContext,tgtDBName,hist_stg_table) == 0):
+                                # dropHistP1="set mapred.job.queue.name="+queueName+";\n drop table if exists "+WorkDBName+"."+hist_p1_table
+                                # execSparkQuery(sqlContext,dropHistP1)
+                                # renameHistToHistP1="set mapred.job.queue.name="+queueName+";\n alter table "+WorkDBName+"."+tgtTableName+" rename to "+WorkDBName+"."+hist_p1_table
+                                # execSparkQuery(sqlContext,renameHistToHistP1)
+                                # renameStgToHist="set mapred.job.queue.name="+queueName+";\n alter table "+WorkDBName+"."+hist_stg_table+" rename to "+WorkDBName+"."+tgtTableName
+                                                                # renameStgToHist="set mapred.job.queue.name="+queueName+";\n CREATE  TABLE "+WorkDBName+"."+tgtTableName+"  STORED AS PARQUET AS SELECT * FROM "+WorkDBName+"."+hist_stg_table+" ;"
+                                # execSparkQuery(sqlContext,renameStgToHist)
+
+def save_df_to_hive(sqlContext,final_df,tgtDBName,tgtTableName,WorkDBName,keyTab,principal,BELINECONNECTIONSTRING,queueName,partition_column):
+
+        hist_p1_table=tgtTableName+"_p1"
+
+        #Final Target table insertion
+        if(tableValidation(sqlContext,tgtDBName, tgtTableName) == 1):
+                logger.debug("SCD_LOG_INFO : Creating History Table for the very first time..")
+                if len(partition_column) > 0 :
+                   logger.debug(" SCD_LOG_INFO : creating table with partition column")
+                   final_df.write.mode('overwrite').partitionBy(partition_column).format('parquet').saveAsTable(tgtDBName+"."+tgtTableName)
+                else :
+                   logger.debug(" SCD_LOG_INFO : creating table without  partition column")
+                   final_df.write.mode('overwrite').format('parquet').saveAsTable(tgtDBName+"."+tgtTableName)
+        else:
+                logger.debug("SCD_LOG_INFO : Dropping history table and re-loading into it..")
+                dropHist = "set mapred.job.queue.name="+queueName+";\n drop table if exists "+tgtDBName+"."+tgtTableName
+                execSparkQuery(sqlContext,dropHist)
+                if len(partition_column) > 0 :
+                   logger.debug(" SCD_LOG_INFO : creating table with partion column")
+                   final_df.write.mode('overwrite').partitionBy(partition_column).format('parquet').saveAsTable(tgtDBName+"."+tgtTableName)
+                else :
+                   logger.debug(" SCD_LOG_INFO : creating table without  partion column")
+                   final_df.write.mode('overwrite').format('parquet').saveAsTable(tgtDBName+"."+tgtTableName)
+
+
+                if(tableValidation(sqlContext,tgtDBName,tgtTableName) == 1):
+                        logger.debug("SCD_LOG_INFO : On failure in insertion into history table for the current load")
+                        tgthistrdd=sqlContext.sql("select * from "+tgtDBName+"."+hist_p1_table)
+                        if(check_partition(tgtDBName,hist_p1_table) == 1):
+                           logger.debug("SCD_LOG_INFO : Target Table is partitioned creating partition Hist P1 table ")
+                           tgthistrdd.write.mode('overwrite').partitionBy(partition_column).format('parquet').saveAsTable(tgtDBName+"."+tgtTableName)
+                        else:
+                           logger.debug("SCD_LOG_INFO : Creating Target table from Hist P1 Table ")
+                           createHistFromHistP1="set mapred.job.queue.name="+queueName+";\n CREATE  TABLE "+WorkDBName+"."+tgtTableName+"  STORED AS PARQUET AS SELECT * FROM "+WorkDBName+"."+hist_p1_table
+                           execSparkQuery(sqlContext,createHistFromHistP1)
+                else:
+                        logger.debug("SCD_LOG_INFO : history table creation for the current load is successful")
+
+
+
+def exec_scdType2(spark_context,sqlContext,paramFileName,keyTab,principal,BELINECONNECTIONSTRING,queueName,auditDBName,auditTableName,auditTableHdfsPath,srcAdditionalColList,tgtAdditionalColList):
+        START_TIME=datetime.today().strftime("%Y-%m-%d %H:%M:%S")
+        logger.debug('SCD_LOG_INFO : PROCESS START DATETIME: ' + str(START_TIME))
+
+        parameters = paramlist(paramFileName)
+        srcDBName=parameters['SrcDBName']
+        srcTableName=parameters['SrcTableName']
+        tgtDBName=parameters['TgtDBName']
+        tgtTableName=parameters['TgtTableName']
+        WorkDBName=parameters['WorkDBName']
+        SrcPKColumns=parameters['SrcPKColumns']
+        TgtPKColumns=parameters['TgtPKColumns']
+        SrcCompareCols=parameters['SrcCompareColumns']
+        TgtCompareCols=parameters['TgtCompareColumns']
+        Source_filter_query=parameters['Source_filter_query']
+        Target_filter_flag=parameters['Target_filter_flag']
+        Target_scd_filter_query=parameters['Target_scd_filter_query']
+        Target_scd_non_filter_query=parameters['Target_scd_non_filter_query']
+        action_column=parameters['action_col']
+        err_desc=""
+        partition_column=""
+        Partition_query=""
+        #Partition_on_condtion=""
+        PartitionsrcpkcolList=""
+        PartitiontgtpkcolList=""
+        try:
+           partition_column=parameters['Partition_column']
+           Partition_query=parameters['Partition_query']
+           #Partition_on_condtion=parameters['Partition_on_condtion']
+           PartitionsrcpkcolList=parameters['PartitionsrcpkcolList']
+           PartitiontgtpkcolList=parameters['PartitiontgtpkcolList']
+        except KeyError:
+           logger.debug("SCD_LOG_INFO : partition_column and Partition_query not assigned , assigning empty")
+        finally:
+           logger.debug("SCD_LOG_INFO : partition_column and Partition_query assigned")
+
+
+
+        
+        #Assigning current and end date
+        strtDate = datetime.today().strftime("%Y-%m-%d %H:%M:%S")
+        endDate = datetime.strptime('31/12/9999 00:00:00', '%d/%m/%Y %H:%M:%S').strftime("%Y-%m-%d %H:%M:%S")
+
+        #Calculating Random Process id for audit table insertion
+        from random import randint
+        process_id= ''.join(["%s" % randint(0, 9) for num in range(0, 5)])
+        logger.debug('SCD_LOG_INFO : PROCESS ID : ' + str(process_id))
+
+        #To convert the Partitions source and target table primary  columns provided in parameter file as string into list
+        if len(Partition_query) > 0:
+           PartitionsrcpkcolList=createColumnList(PartitionsrcpkcolList)
+           PartitiontgtpkcolList=createColumnList(PartitiontgtpkcolList)
+           logger.debug("SCD_LOG_INFO PartitionsrcpkcolList in list format  : " + str(PartitionsrcpkcolList))
+           logger.debug("SCD_LOG_INFO PartitiontgtpkcolList  in list format : " + str(PartitiontgtpkcolList))
+        
+        #Source Table Assigning
+        if len(Partition_query) > 0:
+           srcrdd1 = sqlContext.sql(Source_filter_query)
+           srcrdd1 = srcrdd1.toDF(*[c.lower() for c in srcrdd1.columns])
+           partition_column_extract = sqlContext.sql(Partition_query)
+           #srcrdd_join = srcrdd1.join(partition_column_extract, srcrdd1[Partition_on_condtion] == partition_column_extract.pg,how='left')
+           #columns_to_drop = ['pg']
+           #srcrdd = srcrdd_join.drop(*columns_to_drop)
+           partition_joincond = joinCondition(PartitionsrcpkcolList,PartitiontgtpkcolList,srcrdd1,partition_column_extract)
+           partition_joinSrcTgt = joinTransform(srcrdd1, partition_column_extract, partition_joincond, 'left')
+           for i in PartitiontgtpkcolList:
+               partition_joinSrcTgt = partition_joinSrcTgt.drop(partition_column_extract[i])
+           srcrdd=partition_joinSrcTgt
+           
+        else:
+           srcrdd = sqlContext.sql(Source_filter_query)
+           srcrdd = srcrdd.toDF(*[c.lower() for c in srcrdd.columns])
+	logger.debug('SCD_LOG_INFO : SRCRDD Columns ' + str(srcrdd.columns))
+        #Source table validation
+        logger.debug("SCD_LOG_INFO : Validating Source table...")
+        if (tableValidation(sqlContext,srcDBName, srcTableName) == 1 ):
+                logger.debug("SCD_LOG_INFO : The source table " + srcTableName + " does not present in the database " + srcDBName + ". Please provide the correct table. Terminating the SCD process")
+
+                #Inserting an entry into audit table
+                err_desc="Unavailability of the source table " + srcTableName + " in the database " + srcDBName + ".Please provide the correct table."
+
+                audit_table_str1=process_id+'|'+srcTableName+'|'+str(0)+'|'+tgtTableName+'|'+str(0)+'|'+str(0)+'|'+str(0)+'|'+str(0)+'|'+str(0)+'|'+str(0)+'|'+str(0)+'|'+str(0)+'|'+START_TIME+'|'+'NULL'+'|'+'Failed'+'|'+err_desc+'\n'
+                audit_table_load(audit_table_str1,auditTableHdfsPath,srcTableName)
+
+                repair_audit_table="analyze table "+auditDBName+"."+auditTableName+" compute statistics"
+                execSparkQuery(sqlContext,repair_audit_table)
+                exit(0)
+        else:
+                #srcrdd = sqlContext.sql(Source_filter_query)
+                #srcrdd = srcrdd.toDF(*[c.lower() for c in srcrdd.columns])
+                if(srcrdd.count() > 0):
+                        logger.debug("SCD_LOG_INFO : Count of records present in source table: %d" % srcrdd.count())
+                else:
+                        logger.debug("SCD_LOG_INFO : Count of records present in source table: %d" % srcrdd.count())
+
+                        #Inserting an entry into audit table
+                        err_desc="Record Count in the source table: %d" % srcrdd.count()
+
+                        audit_table_str2=process_id+'|'+srcTableName+'|'+str(srcrdd.count())+'|'+tgtTableName+'|'+str(0)+'|'+str(0)+'|'+str(0)+'|'+str(0)+'|'+str(0)+'|'+str(0)+'|'+str(0)+'|'+str(0)+'|'+START_TIME+'|'+'NULL'+'|'+'Failed'+'|'+err_desc+'\n'
+                        audit_table_load(audit_table_str2,auditTableHdfsPath,srcTableName)
+
+                        repair_audit_table="analyze table "+auditDBName+"."+auditTableName+" compute statistics"
+                        execSparkQuery(sqlContext,repair_audit_table)
+                        exit(0)
+
+
+        #Target Tabe validation
+        logger.debug("SCD_LOG_INFO : Validating Target table...")
+        if(tableValidation(sqlContext,tgtDBName, tgtTableName) == 1):
+                logger.debug("SCD_LOG_INFO : The target table " + tgtTableName + " doesn't present in the database " + tgtDBName)
+                logger.debug("SCD_LOG_INFO : The target table " + tgtTableName + " will be created in the database " + tgtDBName + " similar to source table structure with additional columns included")
+                tgtrdd_temp = newTgtCreation(sqlContext,spark_context,srcrdd)
+                logger.debug("SCD_LOG_INFO : Count of records present in target table going to be considered: %d" % tgtrdd_temp.count())
+                tgtrdd_not_taken_temp=newTgtCreation(sqlContext,spark_context,srcrdd)
+                logger.debug("SCD_LOG_INFO : Count of records present in target table going not to be considered: %d" % tgtrdd_not_taken_temp.count())
+
+        else:
+                tgtrdd=sqlContext.sql("select * from "+tgtDBName+"."+tgtTableName)
+
+                logger.debug("SCD_LOG_INFO : Creating history_p1 target table for previous load in work layer as backup to handle failure")
+                hist_p1_table=tgtTableName+"_p1"
+
+                dropHistP1="set mapred.job.queue.name="+queueName+";\n drop table if exists "+WorkDBName+"."+hist_p1_table
+                execSparkQuery(sqlContext,dropHistP1)
+                if(check_partition(sqlContext,tgtDBName,tgtTableName) == 1):
+                   logger.debug("SCD_LOG_INFO : Target Table is partitioned creating partition Hist P1 table ")
+                   tgtrdd.write.mode('overwrite').partitionBy(partition_column).format('parquet').saveAsTable(tgtDBName+"."+hist_p1_table)
+                else:
+                   logger.debug("SCD_LOG_INFO : Creating Hist P1 Table ")
+                   createHistP1FromHist="set mapred.job.queue.name="+queueName+";\nCREATE TABLE "+WorkDBName+"."+hist_p1_table+"  STORED AS PARQUET AS SELECT * FROM "+WorkDBName+"."+tgtTableName
+                   execSparkQuery(sqlContext,createHistP1FromHist)
+
+                repair_hist_p1_table="msck repair table "+tgtDBName+"."+hist_p1_table
+                #execSparkQuery(sqlContext,repair_hist_p1_table)
+
+                #Added this part of code to add the new column in the scd history table
+                srcColumnListAll = srcrdd.columns
+                tgtColumnListAll = tgtrdd.columns
+
+                srcColumnListAll_lower= map(lambda x:x.lower(),srcColumnListAll)
+                tgtColumnListAll_lower= map(lambda x:x.lower(),tgtColumnListAll)
+
+                srcAdditionalColumnList=[x for x in srcAdditionalColList.split(',')]
+                tgtAdditionalColumnList=[x for x in tgtAdditionalColList.split(',')]
+
+                srcColumnListOrg= [item for item in srcColumnListAll_lower if item not in srcAdditionalColumnList]
+                tgtColumnListOrg= [item for item in tgtColumnListAll_lower if item not in tgtAdditionalColumnList]
+                print(tgtColumnListOrg)
+
+                newColList= [item for item in srcColumnListOrg if item not in tgtColumnListOrg]
+                logger.debug("SCD_LOG_INFO : New Collist is "+ str(newColList))
+
+                if(len(newColList) > 0):
+                        logger.debug("SCD_LOG_INFO : New column has been added in the source refined table, We will add this new col in the target scd history table")
+
+                        hist_old_table=tgtTableName+"_old"
+			newColString="cast(NULL as string) " + ",cast(NULL as string) ".join(newColList)
+			tgtColumnStringOrg=",".join(tgtColumnListOrg)
+
+                        #recreateHistNew="set mapred.job.queue.name="+queueName+";\n drop table if exists "+WorkDBName+"."+tgtTableName+"_new"+";\n Create table "+tgtDBName+"."+tgtTableName+"_new"+" like "+tgtDBName+"."+tgtTableName
+                        recreateHistNew="set mapred.job.queue.name="+queueName+";\n drop table if exists "+WorkDBName+"."+tgtTableName+"_new"+";\n Create table "+tgtDBName+"."+tgtTableName+"_new as select "+tgtColumnStringOrg+","+newColString+","+tgtAdditionalColList+" from "+tgtDBName+"."+tgtTableName
+			execSparkQuery(sqlContext,recreateHistNew)
+
+                        tgtColumnListOrg_new  = [x for x in tgtColumnListOrg]
+
+                        #for item in newColList:
+                        #        addNewcolToHistNew="set mapred.job.queue.name="+queueName+";\nalter table "+tgtDBName+"."+tgtTableName+"_new"+" ADD COLUMNS ("+item+" STRING)"
+                        #        #;\nalter table "+tgtDBName+"."+tgtTableName+"_new"+" CHANGE COLUMN "+item+" "+item+" STRING AFTER "+tgtColumnListOrg_new[-1]
+                        #        print(addNewcolToHistNew)
+                        #        execSparkQuery(sqlContext,addNewcolToHistNew)
+                        #       tgtColumnListOrg_new.append(item)
+
+
+                        #null_string=""
+                        #for item in newColList:
+                        #        null_string+=","+"NULL as "+item
+
+                        #tgtAdditionalColStr=','.join(tgtAdditionalColumnList)
+                        #tgtOrgColStr=','.join(tgtColumnListOrg)
+
+                        #selectQuery="select "+tgtOrgColStr+","+tgtAdditionalColStr+" "+null_string+" FROM "+tgtDBName+"."+tgtTableName
+                        #insertIntoHistNew="set mapred.job.queue.name="+queueName+";\n INSERT INTO "+tgtDBName+"."+tgtTableName+"_new "+selectQuery
+                        #execSparkQuery(sqlContext,insertIntoHistNew)
+
+                        logger.debug("SCD_LOG_INFO : finally renaming hist to hist_old and hist_new to hist table")
+                        renameHistToHistOld="set mapred.job.queue.name="+queueName+";\n drop table if exists "+WorkDBName+"."+hist_old_table+";\n alter table "+WorkDBName+"."+tgtTableName+" rename to "+WorkDBName+"."+hist_old_table
+                        renameHistNewToHist="set mapred.job.queue.name="+queueName+";\n alter table "+WorkDBName+"."+tgtTableName+"_new"+" rename to "+WorkDBName+"."+tgtTableName
+
+                        execSparkQuery(sqlContext,renameHistToHistOld)
+                        repair_hist_old_table="msck repair table "+tgtDBName+"."+hist_old_table
+                        #execSparkQuery(sqlContext,repair_hist_old_table)
+
+                        execSparkQuery(sqlContext,renameHistNewToHist)
+                        repair_hist_table="msck repair table "+tgtDBName+"."+tgtTableName
+                        #execSparkQuery(sqlContext,repair_hist_table)
+
+                else:
+                        logger.debug("SCD_LOG_INFO : columns are matching between source refined and target scd history table")
+
+                # Creating history temp tables to proceed with applying SCD Type2 Logic
+                logger.debug("SCD_LOG_INFO : Creating temp table with same structure as target table in work database")
+                tempTable = tgtTableName + "_temp"
+                notTakenTable = tgtTableName + "_not_taken_temp"
+                tgtTable = tgtDBName + "." + tgtTableName
+
+                if(Target_filter_flag =='Y'):
+                        logger.debug("SCD_LOG_INFO : Filtering out target data for SCD Type2 Logic based on target filter query passed through parameter file")
+                        createQry = "set mapred.job.queue.name="+queueName+";\n SET hive.exec.dynamic.partition = true;\n SET hive.exec.dynamic.partition.mode = nonstrict;\n SET hive.vectorized.execution.enabled = true;\n SET hive.vectorized.execution.reduce.enabled = true;\n SET hive.exec.parallel=true;\n USE "+WorkDBName+" ;\n DROP TABLE IF EXISTS "+WorkDBName+"."+tempTable+";\n CREATE  TABLE "+WorkDBName+"."+tempTable+" AS \n "+Target_scd_filter_query
+                        execSparkQuery(sqlContext,createQry)
+                        tgtrdd_temp=sqlContext.sql("select * from "+WorkDBName+"."+tempTable)
+                        logger.debug("SCD_LOG_INFO : Count of records present in target table going to be considered: %d" % tgtrdd_temp.count())
+
+                        createQry_not_taken = "set mapred.job.queue.name="+queueName+";\n SET hive.exec.dynamic.partition = true;\n SET hive.exec.dynamic.partition.mode = nonstrict;\n SET hive.vectorized.execution.enabled = true;\n SET hive.vectorized.execution.reduce.enabled = true;\n SET hive.exec.parallel=true;\n USE "+WorkDBName+" ;\n DROP TABLE IF EXISTS "+WorkDBName+"."+notTakenTable+";\n CREATE  TABLE "+WorkDBName+"."+notTakenTable+" AS \n "+Target_scd_non_filter_query
+                        execSparkQuery(sqlContext,createQry_not_taken)
+                        tgtrdd_not_taken_temp=sqlContext.sql("select * from "+WorkDBName+"."+notTakenTable)
+                        logger.debug("SCD_LOG_INFO : Count of records present in target table going not to be considered: %d" % tgtrdd_not_taken_temp.count())
+                else:
+                        logger.debug("SCD_LOG_INFO : Taking the whole target data for SCD Type2 Logic")
+                        createQry = "set mapred.job.queue.name="+queueName+";\nSET hive.exec.dynamic.partition = true;\nSET hive.exec.dynamic.partition.mode = nonstrict;\nSET hive.vectorized.execution.enabled = true;\nSET hive.vectorized.execution.reduce.enabled = true;\nSET hive.exec.parallel=true;\nUSE "+WorkDBName+" ;\nDROP TABLE IF EXISTS "+WorkDBName+"."+tempTable+";\nCREATE  TABLE "+WorkDBName+"."+tempTable+" AS SELECT * FROM "+tgtTable
+                        execSparkQuery(sqlContext,createQry)
+                        tgtrdd_temp=sqlContext.sql("select * from "+WorkDBName+"."+tempTable)
+                        logger.debug("SCD_LOG_INFO : Count of records present in target table going to be considered: %d" % tgtrdd_temp.count())
+
+                        tgtrdd_not_taken_temp=newTgtCreation(sqlContext,spark_context,srcrdd)
+                        logger.debug("SCD_LOG_INFO : Count of records present in target table going not to be considered: %d" % tgtrdd_not_taken_temp.count())
+                if len(partition_column) > 0 and len(newColList) > 0 :
+
+                        partition_column_new = partition_column+"_new"
+                        tgtrdd_not_taken_temp=tgtrdd_not_taken_temp.withColumn(partition_column_new, tgtrdd_not_taken_temp[partition_column]).drop(partition_column).withColumnRenamed(partition_column_new,partition_column)
+                        tgtrdd_temp=tgtrdd_temp.withColumn(partition_column_new, tgtrdd_temp[partition_column]).drop(partition_column).withColumnRenamed(partition_column_new,partition_column)
+                
+                logger.debug("SCD_LOG_INFO : tgtrdd_temp columns : " + str(tgtrdd_temp.columns))
+                logger.debug("SCD_LOG_INFO : tgtrdd_not_taken_temp columns : " + str(tgtrdd_not_taken_temp.columns))
+
+        #To check if the primary key columns are present in the source and target table
+        if (columnValidation(srcrdd, SrcPKColumns) == 1) or (columnValidation(tgtrdd_temp, TgtPKColumns) == 1):
+                logger.debug("SCD_LOG_INFO : Any/all primary key columns provided in the parameter file for source and target is/are not present in the table")
+
+                #Inserting an entry into audit table and exit process
+                err_desc="Primary key columns provided in the parameter file does not match with the source and target table"
+
+                audit_table_str3=process_id+'|'+srcTableName+'|'+str(srcrdd.count())+'|'+tgtTableName+'|'+str(tgtrdd_temp.count())+'|'+str(tgtrdd_not_taken_temp.count())+'|'+str(0)+'|'+str(0)+'|'+str(0)+'|'+str(0)+'|'+str(0)+'|'+str(0)+'|'+START_TIME+'|'+'NULL'+'|'+'Failed'+'|'+err_desc+'\n'
+                audit_table_load(audit_table_str3,auditTableHdfsPath,srcTableName)
+
+                repair_audit_table="analyze table "+auditDBName+"."+auditTableName+" compute statistics"
+                execSparkQuery(sqlContext,repair_audit_table)
+                exit(1)
+
+                #To check if the compare columns are present in the source and target table
+        if (columnValidation(srcrdd, SrcCompareCols) == 1) or (columnValidation(tgtrdd_temp,TgtCompareCols) == 1):
+                logger.debug("SCD_LOG_INFO : Any/all compare columns provided in the parameter file for source and target is/are not present in the table")
+
+                #Inserting an entry into audit table and exit process
+                err_desc="Compare columns provided in the parameter file does not match with the source and target table"
+
+                audit_table_str4=process_id+'|'+srcTableName+'|'+str(srcrdd.count())+'|'+tgtTableName+'|'+str(tgtrdd_temp.count())+'|'+str(tgtrdd_not_taken_temp.count())+'|'+str(0)+'|'+str(0)+'|'+str(0)+'|'+str(0)+'|'+str(0)+'|'+str(0)+'|'+START_TIME+'|'+'NULL'+'|'+'Failed'+'|'+err_desc+'\n'
+                audit_table_load(audit_table_str4,auditTableHdfsPath,srcTableName)
+
+                repair_audit_table="analyze table "+auditDBName+"."+auditTableName+" compute statistics"
+                execSparkQuery(sqlContext,repair_audit_table)
+                exit(1)
+
+
+        #To rename all columns in source to append "src"
+        srcrddrename = rddColumnRename(srcrdd, "src")
+        srcpkcolrename = columnRename(SrcPKColumns, "src")
+        srccomparecolrename = columnRename(SrcCompareCols, "src")
+
+        #To convert the source and target table columns provided in parameter file as string into list
+        srcpkcolList = createColumnList(srcpkcolrename)
+        srccomparecolList = createColumnList(srccomparecolrename)
+        tgtpkcolList = createColumnList(TgtPKColumns)
+        tgtcomparecolList = createColumnList(TgtCompareCols)
+
+        #Source and target Column Validation
+        if(len(srcpkcolList) == len(tgtpkcolList)):
+                logger.debug("SCD_LOG_INFO : The number of primary key columns provided in parameter file for source and target matches. So, the corresponding columns will be joined")
+        else:
+                logger.debug("SCD_LOG_INFO : The number of primary key columns provided in parameter file for source and target doesnt match. Please provide it correctly")
+
+                #Inserting an entry into audit table and exit process
+                err_desc="The number of primary key columns provided in parameter file for source and target table does not match"
+
+                audit_table_str5=process_id+'|'+srcTableName+'|'+str(srcrdd.count())+'|'+tgtTableName+'|'+str(tgtrdd_temp.count())+'|'+str(tgtrdd_not_taken_temp.count())+'|'+str(0)+'|'+str(0)+'|'+str(0)+'|'+str(0)+'|'+str(0)+'|'+str(0)+'|'+START_TIME+'|'+'NULL'+'|'+'Failed'+'|'+err_desc+'\n'
+                audit_table_load(audit_table_str5,auditTableHdfsPath,srcTableName)
+
+                repair_audit_table="analyze table "+auditDBName+"."+auditTableName+" compute statistics"
+                execSparkQuery(sqlContext,repair_audit_table)
+                exit(1)
+
+        if(len(srccomparecolList) == len(tgtcomparecolList)):
+                logger.debug("SCD_LOG_INFO : The number of compare columns provided in parameter file for source and target matches. So, the corresponding columns will be compared")
+        else:
+                logger.debug("SCD_LOG_INFO : The number of compare columns provided in parameter file for source and target does not match. Please provide it correctly")
+
+                #Inserting an entry into audit table and exit process
+                err_desc="The number of compare columns provided in parameter file for source and target table does not match"
+
+                audit_table_str6=process_id+'|'+srcTableName+'|'+str(srcrdd.count())+'|'+tgtTableName+'|'+str(tgtrdd_temp.count())+'|'+str(tgtrdd_not_taken_temp.count())+'|'+str(0)+'|'+str(0)+'|'+str(0)+'|'+str(0)+'|'+str(0)+'|'+str(0)+'|'+START_TIME+'|'+'NULL'+'|'+'Failed'+'|'+err_desc+'\n'
+                audit_table_load(audit_table_str6,auditTableHdfsPath,srcTableName)
+
+                repair_audit_table="analyze table "+auditDBName+"."+auditTableName+" compute statistics"
+                execSparkQuery(sqlContext,repair_audit_table)
+                exit(1)
+
+        #To append primary key and common columns to calculate hash value
+        srcColumnArray  = [x for x in srcpkcolList]
+        for x in srccomparecolList:
+                srcColumnArray.append(x)
+
+        #To append primary key and common columns to calculate hash value
+        tgtColumnArray = [ x for x in tgtpkcolList]
+        for x in tgtcomparecolList:
+                tgtColumnArray.append(x)
+
+        #Calculate hash value for primary and common columns for source and target
+        srcrddHash = hashGenerator(srcrddrename, srcColumnArray, 'src_checksum')
+        END_TIME1=datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+        logger.debug('SCD_LOG_INFO : PROCESS END DATETIME1: ' + str(END_TIME1))
+        tgtrddHash = hashGenerator(tgtrdd_temp, tgtColumnArray, 'checksum')
+        END_TIME2=datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+        logger.debug('SCD_LOG_INFO : PROCESS END DATETIME2: ' + str(END_TIME2))
+
+        #Assigning the updated source and target columns to the list
+        srcrddHashColList = srcrddHash.columns
+        tgtrddHashColList = tgtrddHash.columns
+
+        #Filter the data for comparison
+        tgtInactive = tgtrddHash.filter(tgtrddHash.active_flag == 'N')
+        tgtActive = tgtrddHash.filter(tgtrddHash.active_flag == 'Y')
+
+        #Join condition based on primary key columns
+        joincond = joinCondition(srcpkcolList,tgtpkcolList,srcrddHash,tgtrddHash)
+        joinSrcTgt = joinTransform(srcrddHash, tgtActive, joincond, 'full')
+
+        #Derive action columm
+        cond = joinCondition(srcpkcolList,tgtpkcolList,joinSrcTgt,joinSrcTgt)
+        joinSrcTgtAction =  joinSrcTgt.withColumn(action_column, when(reduce(lambda a,b: a&b,[col(c).isNull() for c in tgtpkcolList]), 'insert').when(reduce(lambda a,b: a&b,[col(c).isNull() for c in srcpkcolList]),'delete').when(reduce(lambda a,b : a&b,[cond[i] for i in range(0, len(tgtpkcolList))]) & (joinSrcTgt.src_checksum != joinSrcTgt.checksum),'upsert').otherwise('nochange'))
+        
+        
+        
+
+        #Derive the merge records to be combined
+        if len(partition_column) > 0 :
+           src_partition_column = "src_"+partition_column
+           partition_column_new = partition_column+"_new"
+           if (partition_column == 'active_flag'):
+               mergeInsertRecord = joinSrcTgtAction.filter(col(action_column) == 'insert').selectExpr(srcrddHashColList).withColumn('start_date', lit(strtDate)).withColumn('end_date', lit(endDate)).withColumn('active_flag', lit('Y'))
+               mergeDeleteRecord = joinSrcTgtAction.filter(col(action_column) == 'delete').selectExpr(tgtrddHashColList).withColumn('end_date', lit(strtDate)).withColumn('active_flag', lit('N'))
+               mergeUpdateRecordInactive1 = joinSrcTgtAction.filter(col(action_column) == 'upsert').selectExpr(tgtrddHashColList).drop('end_date').withColumn('end_date', lit(strtDate)).withColumn('active_flag', lit('N'))
+               mergeUpdateRecordInactiveCollist = mergeUpdateRecordInactive1.columns
+               mergeUpdateRecordInactive = mergeUpdateRecordInactive1.selectExpr(mergeUpdateRecordInactiveCollist).withColumn(partition_column_new, mergeUpdateRecordInactive1[partition_column]).drop(partition_column).withColumnRenamed(partition_column_new,partition_column)
+               mergeUpdateRecordActive = joinSrcTgtAction.filter(col(action_column) == 'upsert').selectExpr(srcrddHashColList).withColumn('start_date', lit(strtDate)).withColumn('end_date', lit(endDate)).withColumn('active_flag', lit('Y'))
+               mergeNoChange = joinSrcTgtAction.filter(col(action_column) == 'nochange').selectExpr(tgtrddHashColList)
+               tgtrdd_not_taken_temp=tgtrdd_not_taken_temp.withColumn(partition_column_new, tgtrdd_not_taken_temp[partition_column]).drop(partition_column).withColumnRenamed(partition_column_new,partition_column)
+               tgtrdd_temp=tgtrdd_temp.withColumn(partition_column_new, tgtrdd_temp[partition_column]).drop(partition_column).withColumnRenamed(partition_column_new,partition_column)
+               
+           else:
+
+               mergeInsertRecord1 = joinSrcTgtAction.filter(col(action_column) == 'insert').selectExpr(srcrddHashColList).withColumn('active_flag', lit('Y')).withColumn('start_date', lit(strtDate)).withColumn('end_date', lit(endDate))
+               mergeInsertRecordCollist = mergeInsertRecord1.columns
+               mergeInsertRecord = mergeInsertRecord1.selectExpr(mergeInsertRecordCollist).withColumn(partition_column,mergeInsertRecord1[src_partition_column]).drop(src_partition_column)
+
+               mergeDeleteRecord = joinSrcTgtAction.filter(col(action_column) == 'delete').selectExpr(tgtrddHashColList).withColumn('active_flag', lit('N')).withColumn('end_date', lit(strtDate))
+
+               mergeUpdateRecordInactive1 = joinSrcTgtAction.filter(col(action_column) == 'upsert').selectExpr(tgtrddHashColList).drop('end_date').withColumn('active_flag', lit('N')).withColumn('end_date', lit(strtDate))
+               mergeUpdateRecordInactiveCollist = mergeUpdateRecordInactive1.columns
+               mergeUpdateRecordInactive = mergeUpdateRecordInactive1.selectExpr(mergeUpdateRecordInactiveCollist).withColumn(partition_column_new, mergeUpdateRecordInactive1[partition_column]).drop(partition_column).withColumnRenamed(partition_column_new,partition_column)
+
+               mergeUpdateRecordActive1 = joinSrcTgtAction.filter(col(action_column) == 'upsert').selectExpr(srcrddHashColList).withColumn('active_flag', lit('Y')).withColumn('start_date', lit(strtDate)).withColumn('end_date', lit(endDate))
+               mergeUpdateRecordActive1Collist = mergeUpdateRecordActive1.columns
+               mergeUpdateRecordActive = mergeUpdateRecordActive1.selectExpr(mergeUpdateRecordActive1Collist).withColumn(partition_column, mergeUpdateRecordActive1[src_partition_column]).drop(src_partition_column)
+
+               mergeNoChange = joinSrcTgtAction.filter(col(action_column) == 'nochange').selectExpr(tgtrddHashColList)
+              
+           #Re-Arranging the Columns before union all
+           col_names_s = [re.sub('^src_',"", x) for x in mergeInsertRecord.columns]
+ 
+           mergeDeleteRecord=mergeDeleteRecord.selectExpr(col_names_s)
+           mergeUpdateRecordInactive=mergeUpdateRecordInactive.selectExpr(col_names_s)
+           mergeNoChange=mergeNoChange.selectExpr(col_names_s)
+           tgtInactive=tgtInactive.selectExpr(col_names_s)
+           tgtrdd_not_taken_temp=tgtrdd_not_taken_temp.selectExpr(col_names_s)
+
+
+        else :
+           mergeInsertRecord = joinSrcTgtAction.filter(col(action_column) == 'insert').selectExpr(srcrddHashColList).withColumn('active_flag', lit('Y')).withColumn('start_date', lit(strtDate)).withColumn('end_date', lit(endDate))
+
+           mergeDeleteRecord = joinSrcTgtAction.filter(col(action_column) == 'delete').selectExpr(tgtrddHashColList).withColumn('active_flag', lit('N')).withColumn('end_date', lit(strtDate))
+
+           mergeUpdateRecordInactive = joinSrcTgtAction.filter(col(action_column) == 'upsert').selectExpr(tgtrddHashColList).drop('end_date').withColumn('active_flag', lit('N')).withColumn('end_date', lit(strtDate))
+
+           mergeUpdateRecordActive = joinSrcTgtAction.filter(col(action_column) == 'upsert').selectExpr(srcrddHashColList).withColumn('active_flag', lit('Y')).withColumn('start_date', lit(strtDate)).withColumn('end_date', lit(endDate))
+
+           mergeNoChange = joinSrcTgtAction.filter(col(action_column) == 'nochange').selectExpr(tgtrddHashColList)
+
+
+        #logger for merge data frames:
+
+        logger.debug('SCD_LOG_INFO : mergeInsertRecord  '  + str(mergeInsertRecord.columns))
+        logger.debug('SCD_LOG_INFO : mergeUpdateRecordActive ' + str(mergeUpdateRecordActive.columns))
+        logger.debug('SCD_LOG_INFO : mergeDeleteRecord  ' +  str(mergeDeleteRecord.columns))
+        logger.debug('SCD_LOG_INFO : mergeUpdateRecordInactive  ' +  str(mergeUpdateRecordInactive.columns))
+        logger.debug('SCD_LOG_INFO : mergeNoChange ' + str(mergeNoChange.columns))
+        logger.debug('SCD_LOG_INFO : tgtInactive ' + str(tgtInactive.columns))
+        logger.debug('SCD_LOG_INFO : tgtrdd_not_taken_temp ' + str(tgtrdd_not_taken_temp.columns))
+
+        #Union all the individual rdds
+        if len(Partition_query) > 0:
+                mergerdd1_union = unionAll(mergeDeleteRecord, mergeUpdateRecordInactive, mergeInsertRecord, mergeUpdateRecordActive, mergeNoChange, tgtInactive,tgtrdd_not_taken_temp)
+                logger.debug('SCD_LOG_INFO : mergerdd1_union   ' + str(mergerdd1_union.columns))
+                mergerdd1 = mergerdd1_union.drop(partition_column)
+                partition_column_extract = sqlContext.sql(Partition_query)
+                #mergerdd1_join = mergerdd1.join(partition_column_extract, mergerdd1[Partition_on_condtion] == partition_column_extract.pg,how='left')
+                #columns_to_drop = ['pg']
+                #mergerdd = mergerdd1_join.drop(*columns_to_drop)
+                partition_joincond = joinCondition(PartitionsrcpkcolList,PartitiontgtpkcolList,mergerdd1,partition_column_extract)
+                partition_joinSrcTgt = joinTransform(mergerdd1, partition_column_extract, partition_joincond, 'left')
+                for i in PartitiontgtpkcolList:
+               	    partition_joinSrcTgt  = partition_joinSrcTgt.drop(partition_column_extract[i])
+                mergerdd = partition_joinSrcTgt
+        else:
+                mergerdd = unionAll(mergeDeleteRecord, mergeUpdateRecordInactive, mergeInsertRecord, mergeUpdateRecordActive, mergeNoChange, tgtInactive,tgtrdd_not_taken_temp)
+
+
+        #mergerdd = unionAll(mergeDeleteRecord, mergeUpdateRecordInactive, mergeInsertRecord, mergeUpdateRecordActive, mergeNoChange, tgtInactive,tgtrdd_not_taken_temp)
+        #logger.debug('SCD_LOG_INFO : Merge Rdd Schema ' + mergerdd.Schema())
+        logger.debug('SCD_LOG_INFO : mergerdd   ' + str(mergerdd.columns))
+        save_df_to_hive(sqlContext,mergerdd,tgtDBName,tgtTableName,WorkDBName,keyTab,principal,BELINECONNECTIONSTRING,queueName,partition_column)
+
+        END_TIME=datetime.today().strftime("%Y-%m-%d %H:%M:%S")
+        logger.debug('SCD_LOG_INFO : PROCESS END DATETIME: ' + str(END_TIME))
+
+        #Inserting an sucess entry into audit table
+        audit_table_str7=process_id+'|'+srcTableName+'|'+str(srcrdd.count())+'|'+tgtTableName+'|'+str(tgtrdd_temp.count())+'|'+str(tgtrdd_not_taken_temp.count())+'|'+str(mergeInsertRecord.count())+'|'+str(mergeDeleteRecord.count())+'|'+str(mergeUpdateRecordActive.count())+'|'+str(mergeUpdateRecordInactive.count())+'|'+str(mergeNoChange.count())+'|'+str(tgtInactive.count())+'|'+START_TIME+'|'+END_TIME+'|'+'Succeeded'+'|'+'Success'+'\n'
+        audit_table_load(audit_table_str7,auditTableHdfsPath,srcTableName)
+
+        repair_audit_table="analyze table "+auditDBName+"."+auditTableName+" compute statistics"
+        execSparkQuery(sqlContext,repair_audit_table)
+        logger.debug("SCD_LOG_INFO : Please check the audit table "+auditDBName+"."+auditTableName+" for all insert/update/delete/no-change count details for "+srcTableName)
+
+        #At the end of the script dropping history temp and no_taken_temp tables
+        drop_temp_tables(sqlContext,tgtDBName,tgtTableName,WorkDBName,keyTab,principal,BELINECONNECTIONSTRING,queueName)

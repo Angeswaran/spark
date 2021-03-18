@@ -1,0 +1,50 @@
+#!/bin/bash
+
+paramfile=$1
+propertyfilename=$2
+executionPath=$3
+sleeptime=$4
+
+sleep $sleeptime
+
+service_id=`echo $executionPath | awk -F '/' '{print $3}'`
+
+LoadSCDRun=`hadoop fs -cat /user/${service_id}/Resources/AutosysJobRun/${propertyfilename}.properties`
+export $LoadSCDRun
+
+kinit  -kt  $KeyTabName  $KeyTabPricipal
+
+if [ "$?" != "0" ]; then
+    echo "Kerberos Authorization Failed"
+else
+    echo "Kerberos Authorization Successful"
+fi
+
+echo "SCD PythonFilepath : ${scdpythonScript}"
+echo "Log PythonFile : ${logpythonScript}"
+echo "Main PythonFile : ${mainpythonScript}"
+echo "Queue name : ${queueName}"
+echo "Spark job configuration parameters are..: "
+echo "num-executors is : ${num_executors}"
+echo "executor-cores is : ${executor_cores}"
+echo "executor-memory is : ${executor_memory}"
+echo "driver-memory is : ${driver_memory}"
+echo "SCD Param File Path : ${paramFilePath}"
+echo "Beeline connection String : ${BELINECONNECTIONSTRING}"
+
+path=`pwd`
+echo "Current Path : $path"
+
+echo ${KeyTabName}
+echo ${KeyTabPricipal}
+sparkopts="--num-executors 4 --executor-cores 2 --executor-memory 2G --driver-memory 2G"
+
+echo "spark2-submit --master yarn --deploy-mode cluster --conf "spark.yarn.maxAppAttempts=1" --driver-java-options -XX:MaxPermSize=1024m ${sparkopts} --queue ${queueName} --py-files ${logpythonScript},${scdpythonScript} ${mainpythonScript} $paramFilePath/$paramfile ${KeyTabName} $KeyTabPricipal \"${BELINECONNECTIONSTRING}\" $queueName $auditDBName $auditTableName $auditTableHdfsPath $srcAdditionalColList $tgtAdditionalColList $scdpythonScript $logpythonScript"
+
+spark2-submit --master yarn --deploy-mode cluster --conf "spark.yarn.maxAppAttempts=1" --driver-java-options -XX:MaxPermSize=1024m ${sparkopts} --queue ${queueName} --py-files ${logpythonScript},${scdpythonScript} ${mainpythonScript} $paramFilePath/$paramfile ${KeyTabName} $KeyTabPricipal \"${BELINECONNECTIONSTRING}\" $queueName $auditDBName $auditTableName $auditTableHdfsPath $srcAdditionalColList $tgtAdditionalColList $scdpythonScript $logpythonScript
+
+if [ "$?" != "0" ]; then
+   echo "[Error} Failed to execute SCD History for $name"
+   exit 1
+fi
+

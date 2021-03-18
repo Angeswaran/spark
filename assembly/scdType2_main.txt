@@ -1,0 +1,38 @@
+def main():
+        from pyspark import SparkContext, SparkConf, SQLContext, HiveContext
+        import sys
+        from datetime import datetime
+
+        conf = SparkConf().setAppName("SCDType2")
+        spark_context = SparkContext(conf=conf)
+        scdpythonScript=sys.argv[11]
+        logpythonScript=sys.argv[12]
+        spark_context.addPyFile(logpythonScript)
+        spark_context.addPyFile(scdpythonScript)
+        import scdType2_log as scd_log
+        import scdType2Implementation as scdtype2
+
+        logger = scd_log.get_module_logger(__name__)
+        logger.debug("pyspark script initialized")
+        logger.debug("Application Name = " + spark_context.appName + " , Application ID = " + spark_context.applicationId)
+
+        sqlContext=HiveContext(spark_context)
+        sqlContext.setConf("hive.exec.dynamic.partition", "true")
+        sqlContext.setConf("hive.exec.dynamic.partition.mode", "nonstrict")
+        paramFileName = sys.argv[1]
+        keyTab=sys.argv[2]
+        principal=sys.argv[3]
+        BELINECONNECTIONSTRING=sys.argv[4]
+        queueName=sys.argv[5]
+        auditDBName=sys.argv[6]
+        auditTableName=sys.argv[7]
+        auditTableHdfsPath=sys.argv[8]
+        srcAdditionalColList=sys.argv[9]
+        tgtAdditionalColList=sys.argv[10]
+
+        scdtype2.exec_scdType2(spark_context,sqlContext,paramFileName,keyTab,principal,BELINECONNECTIONSTRING,queueName,auditDBName,auditTableName,auditTableHdfsPath,srcAdditionalColList,tgtAdditionalColList)
+        spark_context.stop()
+
+
+if __name__ == '__main__':
+    main()
