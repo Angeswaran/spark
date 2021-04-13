@@ -1,0 +1,1 @@
+/home/svc-cop-hcp360load-d/autosys/shell/cdlh_sqoop_run_autosys_script.sh /user/svc-cop-hcp360load-d/Resources/Parameters/SQOOP_IMPORT_RULE_PACKAGE_RULE.prm /home/svc-cop-hcp360load-d/autosys/shell/autosys_propertyfile.properties

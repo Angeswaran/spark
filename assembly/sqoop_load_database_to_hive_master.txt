@@ -1,0 +1,1455 @@
+#!/bin/bash
+
+##############################################################################
+#Author         : Abbvie Humira Dev Team
+#Program        : sqoop_load_database_to_hive_master.sh
+#Desc           : Import data from Teradata to HDFS Hive table
+#Version        : 1.0
+##############################################################################
+
+PARMFILE=$1
+BELINECONNECTIONSTRING=$2
+keyTab=$3
+principal=$4
+queueName=$5
+PYFILENAME=$6
+IMPALA_SHELL=$7
+NUM_EXECUTORS=$8
+EXECUTOR_CORES=$9
+EXECUTOR_MEMORY=${10}
+DRIVER_MEMORY=${11}
+MASTERTYPE=${12}
+JVMSIZE=${13}
+
+
+#source ${PARMFILE}
+#export PYTHON_EGG_CACHE= /tmp/
+
+kinit -kt ${keyTab} ${principal}
+
+CURRDIR=`pwd`
+
+TIMESTAMP=`date +'%y%m%d_%H%M%S'`
+STRT_TIME=`date +'%Y-%m-%d %H:%M:%S'`
+
+SRC_DB=`hdfs dfs -cat $PARMFILE | grep "SRC_DB=" | cut -d "=" -f 2`
+SRC_TABLE=`hdfs dfs -cat $PARMFILE | grep "SRC_TABLE=" | cut -d "=" -f 2`
+
+IS_TARGET_TABLE=`hdfs dfs -cat $PARMFILE | grep "IS_TARGET_TABLE=" | cut -d "=" -f 2`
+
+STAGE_HIVE_DB=`hdfs dfs -cat $PARMFILE | grep "STAGE_HIVE_DB=" | cut -d "=" -f 2`
+STAGE_HIVE_TABLE=`hdfs dfs -cat $PARMFILE | grep "STAGE_HIVE_TABLE=" | cut -d "=" -f 2`
+
+TARGET_HIVE_DB=`hdfs dfs -cat $PARMFILE | grep "TARGET_HIVE_DB=" | cut -d "=" -f 2`
+TARGET_HIVE_TABLE=`hdfs dfs -cat $PARMFILE | grep "TARGET_HIVE_TABLE=" | cut -d "=" -f 2`
+
+AUDIT_DB=`hdfs dfs -cat $PARMFILE | grep "AUDIT_DB=" | cut -d "=" -f 2`
+AUDIT_TABLE=`hdfs dfs -cat $PARMFILE | grep "AUDIT_TABLE=" | cut -d "=" -f 2`
+
+#JOB_NAME=$(basename $0)
+JOB_NAME="sqoop_load_database_to_hive_master.sh"
+DATA_PROV_NAME=`hdfs dfs -cat $PARMFILE | grep "DATA_PROV_NAME=" | cut -d "=" -f 2`
+DATA_SET=`hdfs dfs -cat $PARMFILE | grep "DATA_SET=" | cut -d "=" -f 2`
+PROCESS_DESC=`hdfs dfs -cat $PARMFILE | grep "PROCESS_DESC=" | cut -d "=" -f 2`
+
+SPARKPARAM=`hdfs dfs -cat $PARMFILE | grep "SPARKPARAM=" | cut -d "=" -f 2`
+
+SOURCE_PULL_REQUIRE_TARGET_VALUE_IND=`hdfs dfs -cat $PARMFILE | grep "SOURCE_PULL_REQUIRE_TARGET_VALUE_IND=" | cut -d "=" -f 2`
+#INCREMENT_COLUMN_NAME=`hdfs dfs -cat $PARMFILE | grep "INCREMENT_COLUMN_NAME=" | cut -d "=" -f 2`
+INCREMENT_SOURCE_COLUMN_NAME=`hdfs dfs -cat $PARMFILE | grep "INCREMENT_SOURCE_COLUMN_NAME=" | cut -d "=" -f 2`
+INCREMENT_HIVE_COLUMN_NAME=`hdfs dfs -cat $PARMFILE | grep "INCREMENT_HIVE_COLUMN_NAME=" | cut -d "=" -f 2`
+INCREMENT_SOURCE_TARGET_COMPARATOR=`hdfs dfs -cat $PARMFILE | grep "INCREMENT_SOURCE_TARGET_COMPARATOR=" | cut -c36-`
+TARGET_QRY_FOR_INCREMENT_VALUE=`hdfs dfs -cat $PARMFILE | grep "TARGET_QRY_FOR_INCREMENT_VALUE=" | cut -c32-`
+SOURCE_QUERY_OR_TABLE_INDICATOR=`hdfs dfs -cat $PARMFILE | grep "SOURCE_QUERY_OR_TABLE_INDICATOR=" | cut -d "=" -f 2`
+
+QUERY_TO_PULL_FROM_SOURCE=`hdfs dfs -cat $PARMFILE | grep "QUERY_TO_PULL_FROM_SOURCE=" | cut -c27-`
+PRE_SQL_FOR_TARGET=`hdfs dfs -cat $PARMFILE | grep "PRE_SQL_FOR_TARGET=" | cut -c20-`
+
+#####Added new paramas for SQOOP#############################################################
+
+SQOOP_PARAMS=`hdfs dfs -cat $PARMFILE | grep "SQOOP_PARAMS=" |cut -c14-`
+CLOUDERA_PARAMS=`hdfs dfs -cat $PARMFILE | grep "CLOUDERA_PARAMS=" | cut -c17-`
+DEFAULT_APACHE_CONNECTOR=`hdfs dfs -cat $PARMFILE | grep "DEFAULT_APACHE_CONNECTOR=" | cut -c26-`
+APACHE_CONNECTOR_LIB_PATH=`hdfs dfs -cat $PARMFILE | grep "APACHE_CONNECTOR_LIB_PATH=" | cut -c27-`
+BOUNDARY_QUERY_PARAMS=`hdfs dfs -cat $PARMFILE | grep "BOUNDARY_QUERY_PARAMS=" | cut -c23-`
+
+#####Added Params for Partition#############################################################
+
+PARTITION_COLUMNS=`hdfs dfs -cat $PARMFILE | grep "PARTITION_COLUMNS=" | cut -c19-`
+TRUNCATE_APPEND=`hdfs dfs -cat $PARMFILE | grep "TRUNCATE_APPEND=" | cut -c17-`
+DROP_PARTITION_WITH_VALUE=`hdfs dfs -cat $PARMFILE | grep "DROP_PARTITION_WITH_VALUE=" | cut -c27-`
+
+###########################################################################################
+
+TGTFILEPATH=`hdfs dfs -cat $PARMFILE | grep "TGTFILEPATH=" | cut -d "=" -f 2`
+TGTFILEPATH_TS="${TGTFILEPATH}_${TIMESTAMP}"
+BKPFILEPATH=`hdfs dfs -cat $PARMFILE | grep "BKPFILEPATH=" | cut -d "=" -f 2`
+SecretKeyPath=`hdfs dfs -cat $PARMFILE | grep "SecretKeyPath=" | cut -d "=" -f 2`
+ConnectionURL=`hdfs dfs -cat $PARMFILE | grep "ConnectionURL=" | cut -c15-`
+UserName=`hdfs dfs -cat $PARMFILE | grep "UserName=" | cut -d "=" -f 2`
+PasswordAllias=`hdfs dfs -cat $PARMFILE | grep "PasswordAllias=" | cut -d "=" -f 2`
+Driver=`hdfs dfs -cat $PARMFILE | grep "Driver=" | cut -d "=" -f 2`
+SplitColumn=`hdfs dfs -cat $PARMFILE | grep "SplitColumn=" | cut -d "=" -f 2`
+MAPHIVECOL=`hdfs dfs -cat $PARMFILE | grep "MAPHIVECOL=" | cut -d "=" -f 2-`
+WHERE_CONDITION=`hdfs dfs -cat $PARMFILE | grep "WHERE_CONDITION=" | cut -c17-`
+TableMapperNum=`hdfs dfs -cat $PARMFILE | grep "TableMapperNum=" | cut -d "=" -f 2`
+QueryMapperNum=`hdfs dfs -cat $PARMFILE | grep "QueryMapperNum=" | cut -d "=" -f 2`
+InputByMethod=`hdfs dfs -cat $PARMFILE | grep "InputByMethod=" | cut -d "=" -f 2`
+IsSourcePartitioned=`hdfs dfs -cat $PARMFILE | grep "IsSourcePartitioned=" | cut -d "=" -f 2`
+SourcePartitionColumn=`hdfs dfs -cat $PARMFILE | grep "SourcePartitionColumn=" | cut -d "=" -f 2`
+TargetTablePartitions1=`hdfs dfs -cat $PARMFILE | grep "TargetTablePartitions1=" | cut -d "=" -f 2`
+TargetTablePartitions2=`hdfs dfs -cat $PARMFILE | grep "TargetTablePartitions2=" | cut -d "=" -f 2`
+TargetTablePartitionColumns=`hdfs dfs -cat $PARMFILE | grep "TargetTablePartitionColumns=" | cut -d "=" -f 2`
+ISArchiveTablesRequired=`hdfs dfs -cat $PARMFILE | grep "ISArchiveTablesRequired=" | cut -d "=" -f 2`
+CHARSET=`hdfs dfs -cat $PARMFILE | grep "CHARSET=" | cut -c9-`
+
+ERR_DSC=""
+
+
+echo "--------------------------------------------------------------"
+echo "  Start Executing of Script to Import Customer Data to HDFS"
+echo "--------------------------------------------------------------"
+
+echo -e "\n Displaying Variables Assignment"
+echo "Teradata Database: ${SRC_DB}"
+echo "Teradata Source Table Name: ${SRC_TABLE}"
+echo "Teradata TARGET_TABLE_OR_FILE_IND: ${IS_TARGET_TABLE}"
+echo "Hive stage Database: ${STAGE_HIVE_DB}"
+echo "Hive stage table name: ${STAGE_HIVE_TABLE}"
+echo "Hive Target database: ${TARGET_HIVE_DB}"
+echo "Hive target table: ${TARGET_HIVE_TABLE}"
+echo "Hive Database for Audit: ${AUDIT_DB}"
+echo "Audit table Name: ${AUDIT_TABLE}"
+echo "Source Driver Name:  ${Driver}"
+
+echo "Data source provider name: ${DATA_PROV_NAME}"
+echo "Data set: ${DATA_SET}"
+echo "Data set: ${JOB_NAME}"
+echo "Data set: ${PROCESS_DESC}"
+
+echo "SOURCE_PULL_REQUIRE_TARGET_VALUE_IND : ${SOURCE_PULL_REQUIRE_TARGET_VALUE_IND}"
+echo "INCREMENT_SOURCE_COLUMN_NAME: ${INCREMENT_SOURCE_COLUMN_NAME}"
+echo "INCREMENT_HIVE_COLUMN_NAME: ${INCREMENT_HIVE_COLUMN_NAME}"
+echo "INCREMENT_SOURCE_TARGET_COMPARATOR: ${INCREMENT_SOURCE_TARGET_COMPARATOR}"
+echo "TARGET_QRY_FOR_INCREMENT_VALUE: ${TARGET_QRY_FOR_INCREMENT_VALUE}"
+echo "SOURCE_QUERY_OR_TABLE_INDICATOR: ${SOURCE_QUERY_OR_TABLE_INDICATOR}"
+echo "MAPHIVECOL: ${MAPHIVECOL}"
+
+echo "QUERY_TO_PULL_FROM_SOURCE: ${QUERY_TO_PULL_FROM_SOURCE}"
+echo "PRE_SQL_FOR_TARGET: ${PRE_SQL_FOR_TARGET}"
+echo "WHERE_CONDITION: ${WHERE_CONDITION}"
+echo "IsSourcePartitioned: ${IsSourcePartitioned}"
+echo "SourcePartitionColumn: ${SourcePartitionColumn}"
+echo "CLOUDERA_PARAMS: ${CLOUDERA_PARAMS}"
+echo "DEFAULT_APACHE_CONNECTOR: ${DEFAULT_APACHE_CONNECTOR}"
+echo "APACHE_CONNECTOR_LIB_PATH: ${APACHE_CONNECTOR_LIB_PATH}"
+echo "SQOOP_PARAMS: ${SQOOP_PARAMS}"
+echo "BOUNDARY_QUERY__PARAMS: ${BOUNDARY_QUERY_PARAMS}"
+echo "TRUNCATE_APPEND: ${TRUNCATE_APPEND}"
+echo "PARTITION_COLUMNS: ${PARTITION_COLUMNS}"
+echo "DROP_PARTITION_WITH_VALUE: ${DROP_PARTITION_WITH_VALUE}"
+echo "NUM_EXECUTORS: ${NUM_EXECUTORS}"
+echo "EXECUTOR_CORES: ${EXECUTOR_CORES}"
+echo "EXECUTOR_MEMORY: ${EXECUTOR_MEMORY}"
+echo "DRIVER_MEMORY: ${DRIVER_MEMORY}"
+
+spark_program_func() 
+{
+echo -e "Spark Code Begin"
+Query_to_execute="$1"
+
+if [ -n "${SPARKPARAM}" ]; then
+	echo "spark2-submit --keytab ${keyTab} --principal ${principal} --master yarn --deploy-mode cluster --files /etc/hive/conf/hive-site.xml --driver-java-options -XX:MaxPermSize=1024m ${SPARKPARAM} --queue ${queueName} ${PYFILENAME} ${Query_to_execute}"
+
+	spark2-submit --keytab ${keyTab} --principal ${principal} --master yarn --deploy-mode cluster --files /etc/hive/conf/hive-site.xml --driver-java-options -XX:MaxPermSize=1024m ${SPARKPARAM} --queue ${queueName} ${PYFILENAME} "${Query_to_execute}"
+else
+	echo "park2-submit --keytab ${keyTab} --principal ${principal} --master yarn --deploy-mode cluster --files /etc/hive/conf/hive-site.xml --driver-java-options -XX:MaxPermSize=1024m --num-executors $NUM_EXECUTORS --executor-cores ${EXECUTOR_CORES} --executor-memory ${EXECUTOR_MEMORY} --driver-memory ${DRIVER_MEMORY} --queue ${queueName} ${PYFILENAME} ${Query_to_execute}"
+
+	spark2-submit --keytab ${keyTab} --principal ${principal} --master yarn --deploy-mode cluster --files /etc/hive/conf/hive-site.xml --driver-java-options -XX:MaxPermSize=1024m --num-executors $NUM_EXECUTORS --executor-cores ${EXECUTOR_CORES} --executor-memory ${EXECUTOR_MEMORY} --driver-memory ${DRIVER_MEMORY} --queue ${queueName} ${PYFILENAME} "${Query_to_execute}"	
+fi
+echo -e "Spark Code ends"
+}
+
+
+if [ "$IsSourcePartitioned" == "Y" ]; then
+
+        echo -e "\n----- Step 1: Source Partition Value Pull -----"
+
+        src_table_paritions=`sqoop eval -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}=${SRC_DB}" --username ${UserName} --password-alias ${PasswordAllias} --query "select distinct(${SourcePartitionColumn}) from ${SRC_TABLE} where ${WHERE_CONDITION}"`
+
+        src_table_paritionValues=`echo ${src_table_paritions} | tr -s '| ' '|'`
+
+        IFS=$'|' read -ra aryparitionValue <<< "$src_table_paritionValues"
+
+        lengthKey=`echo ${#aryparitionValue[@]}`
+        lastValueKey=`expr $lengthKey - 1`
+
+        echo -e "\n----- Step 2: Hive Database and Table Check -----"
+
+        echo "INFO: Starting STAGE Hive database validation ..."
+
+                                        if [ -z "$STAGE_HIVE_DB" ]; then
+                                                        echo "INFO: The Hive Database is not provided. The default database will be used"
+                                                        echo "INFO: Proceeding with next steps ..."
+                                                        STAGE_HIVE_DB="DEFAULT"
+                                        else
+                                                        echo "INFO: Executing hive command: beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e \"use ${STAGE_HIVE_DB}\""
+                                                        beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "use ${STAGE_HIVE_DB};"
+							#spark_program_func "use ${STAGE_HIVE_DB}"
+                                                        if [ $? != 0 ]; then
+                                                                        echo "INFO: The hive database ${STAGE_HIVE_DB} doesn't exist. The database will be created"
+                                                                        #beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "create database ${STAGE_HIVE_DB};"
+                                                                        beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "use ${STAGE_HIVE_DB};"
+									#spark_program_func "create database ${STAGE_HIVE_DB}"
+									#impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${STAGE_HIVE_DB};"
+									#spark_program_func "use ${STAGE_HIVE_DB}"
+                                                        else
+                                                                        echo "INFO: The hive database ${STAGE_HIVE_DB} exists. Proceeding with next steps ..."
+                                                        fi
+                                        fi
+
+
+
+                                        STAGE_HIVE_TABLE=${STAGE_HIVE_DB}.${STAGE_HIVE_TABLE}
+                                        AUDIT_TABLE=${AUDIT_DB}.${AUDIT_TABLE}
+
+                                        echo "STAGE_HIVE_TABLE: ${STAGE_HIVE_TABLE}"
+                                        echo "AUDIT_TABLE: ${AUDIT_TABLE}"
+
+                                        beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} -e "CREATE TABLE IF NOT EXISTS ${AUDIT_TABLE} (PROCESS_ID INT, PROCESS_DESC VARCHAR(250),JOB_NAME VARCHAR(250),DATA_PROV_NAME VARCHAR(100),DATA_SET VARCHAR(100),STAGE_HIVE_DB VARCHAR(100),TARGET_HIVE_DB VARCHAR(100),STAGE_HIVE_TABLE VARCHAR(100),TARGET_HIVE_TABLE VARCHAR(100),STRT_TIME VARCHAR(100),END_TIME VARCHAR(100),src_table_cnt_stg VARCHAR(100),stg_table_cnt_master VARCHAR(100),tgt_table_cnt_master VARCHAR(100),STATUS VARCHAR(100),ERR_DSC VARCHAR(500)) ROW FORMAT SERDE  'org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe' STORED AS INPUTFORMAT 'org.apache.hadoop.mapred.TextInputFormat' OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat';"
+					#spark_program_func "CREATE TABLE IF NOT EXISTS ${AUDIT_TABLE} (PROCESS_ID INT, PROCESS_DESC VARCHAR(250),JOB_NAME VARCHAR(250),DATA_PROV_NAME VARCHAR(100),DATA_SET VARCHAR(100),STAGE_HIVE_DB VARCHAR(100),TARGET_HIVE_DB VARCHAR(100),STAGE_HIVE_TABLE VARCHAR(100),TARGET_HIVE_TABLE VARCHAR(100),STRT_TIME VARCHAR(100),END_TIME VARCHAR(100),src_table_cnt_stg VARCHAR(100),stg_table_cnt_master VARCHAR(100),tgt_table_cnt_master VARCHAR(100),STATUS VARCHAR(100),ERR_DSC VARCHAR(500)) ROW FORMAT SERDE  'org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe' STORED AS INPUTFORMAT 'org.apache.hadoop.mapred.TextInputFormat' OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat'"
+
+                                        echo -e "\n INFO: Calculating process id for audit table insertion"
+                                        echo "INFO: Executing hive command: beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e \"select case when max(process_id) is null then 1 else max(process_id)+1 end as process_id  from ${AUDIT_TABLE}\""
+                                       # PROCESS_ID=`beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "select case when max(process_id) is null then 0 else max(process_id)+1 end as process_id  from ${AUDIT_TABLE};" `
+					impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${AUDIT_TABLE};"
+					PROCESS_ID=`impala-shell -k -i ${IMPALA_SHELL} -B -q "select case when max(process_id) is null then 0 else max(process_id)+1 end as process_id  from ${AUDIT_TABLE};" --quiet`
+                                        echo -e "PROCESS_ID : ${PROCESS_ID}"
+
+
+                                        echo -e "\n INFO: Checking Hive table..."
+                                        ##echo "INFO: Executing hive command: beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e \"SELECT * FROM ${STAGE_HIVE_TABLE} LIMIT 1\""
+                                        if [ -z "$STAGE_HIVE_TABLE" ]; then
+                                                        ERR_DSC="Error: STAGE_HIVE_TABLE value is not provided in parameter file"
+                                                        echo "${ERR_DSC}"
+                                                        END_TIME=`date +'%Y-%m-%d %H:%M:%S'`
+                                                        STATUS="FAILED"
+                                                        echo "INFO: Inserting an entry into audit table and exit process..."
+                                                        beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} -e "insert into ${AUDIT_TABLE} values (${PROCESS_ID},'${PROCESS_DESC}','${JOB_NAME}','${DATA_PROV_NAME}','${DATA_SET}','${SRC_DB}','${STAGE_HIVE_DB}','${SRC_TABLE}','${STAGE_HIVE_TABLE}','${STRT_TIME}','${END_TIME}',0,0,0,'${STATUS}','${ERR_DSC}');"
+							#spark_program_func "insert into ${AUDIT_TABLE} values (${PROCESS_ID},'${PROCESS_DESC}','${JOB_NAME}','${DATA_PROV_NAME}','${DATA_SET}','${SRC_DB}','${STAGE_HIVE_DB}','${SRC_TABLE}','${STAGE_HIVE_TABLE}','${STRT_TIME}','${END_TIME}',0,0,0,'${STATUS}','${ERR_DSC}')"
+							#impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${AUDIT_TABLE};"
+                                                        exit 1
+
+                                        else
+                                                        beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "SELECT * FROM ${STAGE_HIVE_TABLE} LIMIT 1;"
+							#spark_program_func "SELECT * FROM ${STAGE_HIVE_TABLE} LIMIT 1"
+                                                        if [ $? != 0 ]; then
+                                                                        echo "INFO: ${STAGE_HIVE_TABLE} table doesn't exists in Hive. create target table in Hive with same structure as source table"
+                                                                        stage_hive_table_exists="No"
+                                                        else
+                                                                        echo "INFO: ${STAGE_HIVE_TABLE} exists in Hive. Proceed for next step..."
+                                                                        stage_hive_table_exists="Yes"
+                                                        fi
+                                        fi
+
+        for key in "${!aryparitionValue[@]}"; do
+                if [ $key -gt 21 ] && [ $key -lt $lastValueKey ]; then
+                        echo "$key ${aryparitionValue[$key]}"
+                        echo -e "\n----- Step 3: apply operations on Hive table for full or delta Calculation ------"
+                        echo -e "\n INFO: apply operations on Hive table..."
+
+                        if [ "$SOURCE_QUERY_OR_TABLE_INDICATOR" == "TABLE" ]; then
+
+                                echo "INFO: Query for incremental pull is : select count(*) from ${SRC_TABLE} where ${WHERE_CONDITION} and ${SourcePartitionColumn} = '${aryparitionValue[$key]}'"
+
+                                src_table_cnt=`sqoop eval -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}=${SRC_DB}" --username ${UserName} --password-alias ${PasswordAllias} --query "select cast(count(*) as bigint) from ${SRC_TABLE} where ${SourcePartitionColumn} = '${aryparitionValue[$key]}' and ${WHERE_CONDITION}"`
+                        else
+
+                                echo "INFO: Query for incremental pull is : ${QUERY_TO_PULL_FROM_SOURCE} and ${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} ${increment_pull_value}"
+
+                                src_table_cnt=`sqoop eval -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}=${SRC_DB}" --username ${UserName} --password-alias ${PasswordAllias} --query "select cast(count(*) as bigint) from (${QUERY_TO_PULL_FROM_SOURCE} and ${SourcePartitionColumn} = '${aryparitionValue[$key]}') as foo;"`
+
+                        fi
+
+                        src_table_cnt=`echo $src_table_cnt | cut -d'|' -f4`
+                        src_table_cnt=`echo $src_table_cnt | tr -s " "`
+
+
+                        if [ "$PRE_SQL_FOR_TARGET" != "" ]; then
+                                echo "INFO: execute pre sql statement : $PRE_SQL_FOR_TARGET"
+                                beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "${PRE_SQL_FOR_TARGET} ; "
+				#spark_program_func "${PRE_SQL_FOR_TARGET}"
+                        fi
+                                echo "\n INFO: source count value is : ${src_table_cnt}"
+
+                                if [ "$stage_hive_table_exists" = "Yes" ];then
+                                        beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "SELECT * FROM ${STAGE_HIVE_TABLE} LIMIT 1;"
+					#spark_program_func "SELECT * FROM ${STAGE_HIVE_TABLE} LIMIT 1"
+                                                        if [ $? != 0 ]; then
+                                                                        stg_table_cnt_before_process=0
+                                                        else
+                                                                       stg_table_cnt_before_process=`beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "select count(*) from ${STAGE_HIVE_TABLE};" `
+									#stg_table_cnt_before_process=`impala-shell -k -i ${IMPALA_SHELL} -B -q "select count(*) from ${STAGE_HIVE_TABLE};" --quiet`
+                                                        fi
+                                else
+                                        stg_table_cnt_before_process=0
+                                fi
+                                echo "Record count for Staging table before Sqoop Import: ${stg_table_cnt_before_process}"
+
+                        echo -e "\n----- Step 4: source table Validation ------"
+                        echo "INFO: Getting count of records from source table ..."
+
+                        table_cnt_diff=`expr ${src_table_cnt} - ${stg_table_cnt_before_process}`
+                        echo "\n INFO: source vs target count difference is : ${table_cnt_diff}"
+
+                        if [ "${table_cnt_diff}" -eq 0 ] ; then
+                                ERR_DSC="INFO: No new records found in Teradata table $SRC_TABLE since last pull"
+                                echo "${ERR_DSC}"
+                                END_TIME=`date +'%Y-%m-%d %H:%M:%S'`
+                                STATUS="FAILED"
+                                echo "INFO: Inserting an entry into audit table..."
+                                beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "insert into ${AUDIT_TABLE} values (${PROCESS_ID},'${PROCESS_DESC}','${JOB_NAME}','${DATA_PROV_NAME}','${DATA_SET}','${SRC_DB}','${STAGE_HIVE_DB}','${SRC_TABLE}','${STAGE_HIVE_TABLE}','${STRT_TIME}','${END_TIME}',${src_table_cnt},${src_table_cnt},${stg_table_cnt_before_process},'${STATUS}','${ERR_DSC}');"
+				#spark_program_func "insert into ${AUDIT_TABLE} values (${PROCESS_ID},'${PROCESS_DESC}','${JOB_NAME}','${DATA_PROV_NAME}','${DATA_SET}','${SRC_DB}','${STAGE_HIVE_DB}','${SRC_TABLE}','${STAGE_HIVE_TABLE}','${STRT_TIME}','${END_TIME}',${src_table_cnt},${src_table_cnt},${stg_table_cnt_before_process},'${STATUS}','${ERR_DSC}')"
+				impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${AUDIT_TABLE};"
+                                exit 0
+                        else
+                                echo "INFO: Total number of incremental records to be inserted: $src_table_cnt"
+                        fi
+
+                        echo -e "\n----- Step 5: Sqoop Command Execution -----"
+                        echo "INFO: Starting Sqoop Command Execution ..."
+
+                        if [ "$SOURCE_QUERY_OR_TABLE_INDICATOR" == "TABLE" ] && [ "$DEFAULT_APACHE_CONNECTOR" == "Y" ]; then
+                                                                                echo "INFO: SQL Import process into table is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect ${ConnectionURL}=${SRC_DB} --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where "${SourcePartitionColumn} = '${aryparitionValue[$key]}' and ${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} -- --input-method ${InputByMethod}"
+
+                                        sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect ${ConnectionURL}=${SRC_DB}${CHARSET} --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where "${SourcePartitionColumn} = '${aryparitionValue[$key]}' and ${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by "${SplitColumn}" --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} -- --input-method ${InputByMethod} ${CLOUDERA_PARAMS}
+
+                                                elif [ "$SOURCE_QUERY_OR_TABLE_INDICATOR" == "TABLE" ]; then
+
+                                        echo "INFO: SQL Import process into table is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect ${ConnectionURL}=${SRC_DB} --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where "${SourcePartitionColumn} = '${aryparitionValue[$key]}' and ${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} -- --input-method ${InputByMethod}"
+
+                                        sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect ${ConnectionURL}=${SRC_DB}${CHARSET} --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where "${SourcePartitionColumn} = '${aryparitionValue[$key]}' and ${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} -- --input-method ${InputByMethod}
+                        else
+                                        echo "INFO: SQL Import process into table is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect ${ConnectionURL}=${SRC_DB} --username ${UserName} --password-alias ${PasswordAllias} --query ${QUERY_TO_PULL_FROM_SOURCE} and ${SourcePartitionColumn} = '${aryparitionValue[$key]}' and \$CONDITIONS -m ${QueryMapperNum} --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir  ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL}"
+
+                                        sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect ${ConnectionURL}=${SRC_DB}${CHARSET} --username ${UserName} --password-alias ${PasswordAllias} --query "${QUERY_TO_PULL_FROM_SOURCE} and ${SourcePartitionColumn} = '${aryparitionValue[$key]}' and \$CONDITIONS" -m ${QueryMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir  ${TGTFILEPATH_TS} --compress ${MAPHIVECOL}
+                        fi
+
+                        if [ $? == 0 ]; then
+                                echo -e ""\\N" INFO: Import has been completed successfully"
+                                echo "INFO: Total Number of source records read from ${SRC_TABLE}: $src_table_cnt"
+                                stg_table_cnt_after_process=`beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "select count(*) from ${STAGE_HIVE_TABLE};" `
+				#stg_table_cnt_after_process=`impala-shell -k -i ${IMPALA_SHELL} -B -q "select count(*) from ${STAGE_HIVE_TABLE};" --quiet`
+                                echo "Record count for Staging table after Sqoop Import: ${stg_table_cnt_after_process}"
+                                stg_tgt_table_cnt=`expr ${stg_table_cnt_after_process} - ${stg_table_cnt_before_process}`
+                                echo "INFO: Total Number of target records inserted in ${STAGE_HIVE_TABLE}: ${stg_tgt_table_cnt}"
+
+                        else
+                                ERR_DSC="ERROR: Sqoop Command Failed. Please see sqoop log for more details"
+                                echo "${ERR_DSC}"
+                                END_TIME=`date +'%Y-%m-%d %H:%M:%S'`
+                                STATUS="FAILED"
+                                echo -e "\nINFO: Inserting record into audit table..."
+                                beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "insert into ${AUDIT_TABLE} values (${PROCESS_ID},'${PROCESS_DESC}','${JOB_NAME}','${DATA_PROV_NAME}','${DATA_SET}','${SRC_DB}','${STAGE_HIVE_DB}','${SRC_TABLE}','${STAGE_HIVE_TABLE}','${STRT_TIME}','${END_TIME}',0,${src_table_cnt},0,'${STATUS}','${ERR_DSC}');"
+				#spark_program_func "insert into ${AUDIT_TABLE} values (${PROCESS_ID},'${PROCESS_DESC}','${JOB_NAME}','${DATA_PROV_NAME}','${DATA_SET}','${SRC_DB}','${STAGE_HIVE_DB}','${SRC_TABLE}','${STAGE_HIVE_TABLE}','${STRT_TIME}','${END_TIME}',0,${src_table_cnt},0,'${STATUS}','${ERR_DSC}')"
+				impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${AUDIT_TABLE};"
+                                exit 1
+                        fi
+
+                        echo -e "\n----- Step 6: Stage Hive Table Validations -----"
+                        echo "INFO: Starting validation checks ..."
+                        if [ "${src_table_cnt}" == "${stg_tgt_table_cnt}" ]; then
+                                echo -e "\nINFO: The count of records matches between ${SRC_TABLE} in Teradata and ${STAGE_HIVE_TABLE} in Hive"
+                                END_TIME=`date +'%Y-%m-%d %H:%M:%S'`
+                                STATUS="SUCCEEDED"
+                                echo "INFO: Inserting an entry into audit table..."
+                                
+				beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "insert into ${AUDIT_TABLE} values (${PROCESS_ID},'${PROCESS_DESC}','${JOB_NAME}','${DATA_PROV_NAME}','${DATA_SET}','${SRC_DB}','${STAGE_HIVE_DB}','${SRC_TABLE}','${STAGE_HIVE_TABLE}','${STRT_TIME}','${END_TIME}',${src_table_cnt},${src_table_cnt},${stg_tgt_table_cnt},'${STATUS}','')"
+				#spark_program_func "insert into ${AUDIT_TABLE} values (${PROCESS_ID},'${PROCESS_DESC}','${JOB_NAME}','${DATA_PROV_NAME}','${DATA_SET}','${SRC_DB}','${STAGE_HIVE_DB}','${SRC_TABLE}','${STAGE_HIVE_TABLE}','${STRT_TIME}','${END_TIME}',${src_table_cnt},${src_table_cnt},${stg_tgt_table_cnt},'${STATUS}','')"
+				impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${AUDIT_TABLE};"
+                                echo "INFO: An entry has been inserted into audit table"
+                        else
+                                echo -e "\nINFO: The count of records doesn't match between ${SRC_TABLE} in Teradata and ${STAGE_HIVE_TABLE} in Hive"
+                                echo "INFO: Please check for the log for more details. "
+                                ERR_DSC="ERROR: The count of records in Teradata and Hive is not matching"
+                                STATUS="FAILED"
+                                END_TIME=`date +'%Y-%m-%d %H:%M:%S'`
+                                echo "INFO: Inserting an entry into audit table..."
+                                beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "insert into ${AUDIT_TABLE} values (${PROCESS_ID},'${PROCESS_DESC}','${JOB_NAME}','${DATA_PROV_NAME}','${DATA_SET}','${SRC_DB}','${STAGE_HIVE_DB}','${SRC_TABLE}','${STAGE_HIVE_TABLE}','${STRT_TIME}','${END_TIME}',${src_table_cnt},${stg_tgt_table_cnt},${stg_tgt_table_cnt},'${STATUS}','${ERR_DSC}');"
+				#spark_program_func "insert into ${AUDIT_TABLE} values (${PROCESS_ID},'${PROCESS_DESC}','${JOB_NAME}','${DATA_PROV_NAME}','${DATA_SET}','${SRC_DB}','${STAGE_HIVE_DB}','${SRC_TABLE}','${STAGE_HIVE_TABLE}','${STRT_TIME}','${END_TIME}',${src_table_cnt},${stg_tgt_table_cnt},${stg_tgt_table_cnt},'${STATUS}','${ERR_DSC}')"
+				impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${AUDIT_TABLE};"
+                                exit 1
+                        fi
+
+                        echo -e "\n----- Step 7: Target table creation in Parquet format -----"
+
+                        echo "INFO: Starting TARGET Hive database validation ..."
+
+                        if [ -z "$TARGET_HIVE_DB" ]; then
+                                echo "INFO: The Hive Database is not provided. The default database will be used"
+                                echo "INFO: Proceeding with next steps ..."
+                                TARGET_HIVE_DB="DEFAULT"
+                        else
+                                echo "INFO: Executing hive command: beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e \"use ${TARGET_HIVE_DB}\""
+                                beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} -e "use ${TARGET_HIVE_DB};"
+				#spark_program_func "use ${TARGET_HIVE_DB}"
+                                if [ $? != 0 ]; then
+                                                echo "INFO: The hive database ${TARGET_HIVE_DB} doesn't exist. The database will be created"
+                                                beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "create database ${TARGET_HIVE_DB};"
+						#spark_program_func "create database ${TARGET_HIVE_DB}"
+						impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${TARGET_HIVE_DB};"
+                                                beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "use ${TARGET_HIVE_DB};"
+						#spark_program_func "use ${TARGET_HIVE_DB}"
+                                else
+                                                echo "INFO: The hive database ${TARGET_HIVE_DB} exists. Proceeding with next steps ..."
+                                fi
+                        fi
+
+                        TARGET_HIVE_TABLE=${TARGET_HIVE_DB}.${TARGET_HIVE_TABLE}
+                        echo "TARGET_HIVE_TABLE: ${TARGET_HIVE_TABLE}"
+
+                        echo -e "\n INFO: Checking target Hive table..."
+                        if [ -z "$TARGET_HIVE_TABLE" ]; then
+                                ERR_DSC="Error: TARGET_HIVE_TABLE value is not provided in parameter file"
+                                echo "${ERR_DSC}"
+                                END_TIME=`date +'%Y-%m-%d %H:%M:%S'`
+                                STATUS="FAILED"
+                                echo "INFO: Inserting an entry into audit table and exit process..."
+                                beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2-e "insert into ${AUDIT_TABLE} values (${PROCESS_ID},'${PROCESS_DESC}','${JOB_NAME}','${DATA_PROV_NAME}','${DATA_SET}','${STAGE_HIVE_DB}','${TARGET_HIVE_DB}','${STAGE_HIVE_TABLE}','${TARGET_HIVE_TABLE}','${STRT_TIME}','${END_TIME}',0,0,0,'${STATUS}','${ERR_DSC}');"
+				#spark_program_func "insert into ${AUDIT_TABLE} values (${PROCESS_ID},'${PROCESS_DESC}','${JOB_NAME}','${DATA_PROV_NAME}','${DATA_SET}','${STAGE_HIVE_DB}','${TARGET_HIVE_DB}','${STAGE_HIVE_TABLE}','${TARGET_HIVE_TABLE}','${STRT_TIME}','${END_TIME}',0,0,0,'${STATUS}','${ERR_DSC}')"
+				impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${AUDIT_TABLE};"
+
+                                exit 1
+
+                        else
+                                TARGET_HIVE_TABLE_TEMP="${TARGET_HIVE_TABLE}_TEMP"
+                                beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "SELECT * FROM ${TARGET_HIVE_TABLE_TEMP} LIMIT 1;"
+				#spark_program_func "SELECT * FROM ${TARGET_HIVE_TABLE_TEMP} LIMIT 1"
+                                if [ $? != 0 ]; then
+                                                echo "INFO: ${TARGET_HIVE_TABLE_TEMP} table doesn't exists in Hive"
+
+                                else
+                                                echo "INFO: ${TARGET_HIVE_TABLE_TEMP} exists in Hive. drop this table"
+                                                #beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "drop table ${TARGET_HIVE_TABLE_TEMP};"
+						spark_program_func "drop table ${TARGET_HIVE_TABLE_TEMP}"
+						impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${TARGET_HIVE_TABLE_TEMP};"
+                                fi
+
+                                LOAD_DATE_TIME=`date +'%Y%m%d%H%M%S'`
+                                schema=`beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=dsv -e "describe ${STAGE_HIVE_TABLE};"`
+				#schema=`impala-shell -k -i ${IMPALA_SHELL} -B -q "describe ${STAGE_HIVE_TABLE};" --quiet`
+                                schema2=`echo "$schema" | tr "\n" ","  | tr "|" " "`
+                                schema3=`echo "${schema2/%,/}"`
+
+                                IFS=$',' read -ra TargetPartitionary <<< "$TargetTablePartitionColumns"
+                                for key in "${!TargetPartitionary[@]}"
+                                        do
+                                                schemafinal=${schema3//${TargetPartitionary[$key]} ,/}
+
+                                        done
+
+                                schemaColsToPull=${schemafinal//string/}
+                                echo "INFO: Create target temp table ${TARGET_HIVE_TABLE_TEMP} in Hive with same structure as source table"
+                                #beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "create table ${TARGET_HIVE_TABLE_TEMP} (${schemafinal}) partitioned by (${TargetTablePartitionColumns}) stored as parquet;"
+				spark_program_func "create table ${TARGET_HIVE_TABLE_TEMP} (${schemafinal}) partitioned by (${TargetTablePartitionColumns}) stored as parquet"
+				impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${TARGET_HIVE_TABLE_TEMP};"
+                                #beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "insert into table ${TARGET_HIVE_TABLE_TEMP} partition(${TargetTablePartitions1}='${LOAD_DATE_TIME}',${TargetTablePartitions2}='${aryparitionValue[$key]}') select ${schemaColsToPull} from ${STAGE_HIVE_TABLE};"
+				spark_program_func "insert into table ${TARGET_HIVE_TABLE_TEMP} partition(${TargetTablePartitions1}='${LOAD_DATE_TIME}',${TargetTablePartitions2}='${aryparitionValue[$key]}') select ${schemaColsToPull} from ${STAGE_HIVE_TABLE}"
+				impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${TARGET_HIVE_TABLE_TEMP};"
+                        fi
+
+                        echo -e "\n----- Step 8: Stage vs target Hive Table Validations -----"
+                        echo "INFO: Starting validation checks ..."
+
+                        #tgt_table_cnt_master=`beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "select count(*) from ${TARGET_HIVE_TABLE_TEMP};" `
+			tgt_table_cnt_master=`impala-shell -k -i ${IMPALA_SHELL} -B -q "select count(*) from ${TARGET_HIVE_TABLE_TEMP};" --quiet`
+
+                        if [ $? != 0 ]; then
+                                echo "INFO: ${TARGET_HIVE_TABLE_TEMP} table doesn't exists in Hive"
+                                tgt_table_cnt_master=0
+                        else
+                                echo "INFO: ${TARGET_HIVE_TABLE_TEMP} exists in Hive."
+                        fi
+
+                        if [ "${stg_tgt_table_cnt}" == "${tgt_table_cnt_master}" ]; then
+                                echo -e "\nINFO: The count of records matches between ${STAGE_HIVE_TABLE} and ${TARGET_HIVE_TABLE_TEMP} in Hive"
+                                END_TIME=`date +'%Y-%m-%d %H:%M:%S'`
+                                STATUS="SUCCEEDED"
+                                echo "INFO: Inserting an entry into audit table..."
+                                beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "insert into ${AUDIT_TABLE} values (${PROCESS_ID},'${PROCESS_DESC}','${JOB_NAME}','${DATA_PROV_NAME}','${DATA_SET}','${STAGE_HIVE_DB}','${TARGET_HIVE_DB}','${STAGE_HIVE_TABLE}','${TARGET_HIVE_TABLE}','${STRT_TIME}','${END_TIME}',${stg_tgt_table_cnt},${stg_tgt_table_cnt},${tgt_table_cnt_master},'${STATUS}','');"
+				#spark_program_func "insert into ${AUDIT_TABLE} values (${PROCESS_ID},'${PROCESS_DESC}','${JOB_NAME}','${DATA_PROV_NAME}','${DATA_SET}','${STAGE_HIVE_DB}','${TARGET_HIVE_DB}','${STAGE_HIVE_TABLE}','${TARGET_HIVE_TABLE}','${STRT_TIME}','${END_TIME}',${stg_tgt_table_cnt},${stg_tgt_table_cnt},${tgt_table_cnt_master},'${STATUS}','')"
+				#impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${AUDIT_TABLE};"
+                                echo "INFO: An entry has been inserted into audit table"
+                        else
+                                echo -e "\nINFO: The count of records doesn't match between ${STAGE_HIVE_TABLE} and ${TARGET_HIVE_TABLE} in Hive"
+                                echo "INFO: Please check for the log for more details. "
+                                STATUS="FAILED"
+                                ERR_DSC="ERROR: The count of records in stagte and target Hive is not matching"
+                                END_TIME=`date +'%Y-%m-%d %H:%M:%S'`
+                                echo "INFO: Inserting an entry into audit table..."
+                                beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "insert into ${AUDIT_TABLE} values (${PROCESS_ID},'${PROCESS_DESC}','${JOB_NAME}','${DATA_PROV_NAME}','${DATA_SET}','${STAGE_HIVE_DB}','${TARGET_HIVE_DB}','${STAGE_HIVE_TABLE}','${TARGET_HIVE_TABLE}','${STRT_TIME}','${END_TIME}',${stg_tgt_table_cnt},${tgt_table_cnt_master},${tgt_table_cnt_master},'${STATUS}','${ERR_DSC}');"
+				#spark_program_func "insert into ${AUDIT_TABLE} values (${PROCESS_ID},'${PROCESS_DESC}','${JOB_NAME}','${DATA_PROV_NAME}','${DATA_SET}','${STAGE_HIVE_DB}','${TARGET_HIVE_DB}','${STAGE_HIVE_TABLE}','${TARGET_HIVE_TABLE}','${STRT_TIME}','${END_TIME}',${stg_tgt_table_cnt},${tgt_table_cnt_master},${tgt_table_cnt_master},'${STATUS}','${ERR_DSC}')"
+				impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${AUDIT_TABLE};"
+                                exit 1
+                        fi
+                fi
+        done
+
+        if [ "$ISArchiveTablesRequired" = "Y" ]; then
+                TARGET_HIVE_TABLE_P2="${TARGET_HIVE_TABLE}_P2"
+                beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "SELECT * FROM ${TARGET_HIVE_TABLE_P2} LIMIT 1;"
+		#spark_program_func "SELECT * FROM ${TARGET_HIVE_TABLE_P2} LIMIT 1"
+                if [ $? != 0 ]; then
+                                echo "INFO: ${TARGET_HIVE_TABLE_P2} table doesn't exists in Hive."
+                else
+                                echo "INFO: ${TARGET_HIVE_TABLE_P2} exists in Hive. drop this table"
+                                beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "drop table ${TARGET_HIVE_TABLE_P2};"
+				#spark_program_func "drop table ${TARGET_HIVE_TABLE_P2}"
+				impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${TARGET_HIVE_TABLE_P2};"
+				
+                fi
+
+                TARGET_HIVE_TABLE_P1="${TARGET_HIVE_TABLE}_P1"
+                beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "SELECT * FROM ${TARGET_HIVE_TABLE_P1} LIMIT 1;"
+		#spark_program_func "SELECT * FROM ${TARGET_HIVE_TABLE_P1} LIMIT 1"
+                if [ $? != 0 ]; then
+                                echo "INFO: ${TARGET_HIVE_TABLE_P1} table doesn't exists in Hive."
+                else
+                                beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "use ${TARGET_HIVE_DB};alter table ${TARGET_HIVE_TABLE_P1} rename to ${TARGET_HIVE_TABLE_P2};"
+				#spark_program_func "use ${TARGET_HIVE_DB};alter table ${TARGET_HIVE_TABLE_P1} rename to ${TARGET_HIVE_TABLE_P2}"
+				impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${TARGET_HIVE_TABLE_P2};"
+                fi
+
+                beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "SELECT * FROM ${TARGET_HIVE_TABLE} LIMIT 1;"
+		#spark_program_func "SELECT * FROM ${TARGET_HIVE_TABLE} LIMIT 1"
+                if [ $? != 0 ]; then
+                                echo "INFO: ${TARGET_HIVE_TABLE} table doesn't exists in Hive."
+                else
+                                beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "use ${TARGET_HIVE_DB};alter table ${TARGET_HIVE_TABLE} rename to ${TARGET_HIVE_TABLE_P1};"
+				#spark_program_func "use ${TARGET_HIVE_DB};alter table ${TARGET_HIVE_TABLE} rename to ${TARGET_HIVE_TABLE_P1}"
+				impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${TARGET_HIVE_TABLE_P1};"
+                fi
+        else
+                TARGET_HIVE_TABLE_OLD="${TARGET_HIVE_TABLE}_OLD"
+                beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "SELECT * FROM ${TARGET_HIVE_TABLE} LIMIT 1;"
+		#spark_program_func "SELECT * FROM ${TARGET_HIVE_TABLE} LIMIT 1"
+                if [ $? != 0 ]; then
+                                echo "INFO: ${TARGET_HIVE_TABLE} table doesn't exists in Hive."
+                else
+                                beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "use ${TARGET_HIVE_DB};alter table ${TARGET_HIVE_TABLE} rename to ${TARGET_HIVE_TABLE_OLD};"
+				#spark_program_func "use ${TARGET_HIVE_DB};alter table ${TARGET_HIVE_TABLE} rename to ${TARGET_HIVE_TABLE_OLD}"
+				impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${TARGET_HIVE_TABLE_OLD};"
+                fi
+        fi
+
+        beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "use ${TARGET_HIVE_DB};alter table ${TARGET_HIVE_TABLE_TEMP} rename to ${TARGET_HIVE_TABLE};"
+	#spark_program_func "use ${TARGET_HIVE_DB};alter table ${TARGET_HIVE_TABLE_TEMP} rename to ${TARGET_HIVE_TABLE}"
+	impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${TARGET_HIVE_TABLE};"
+
+        echo -e "\n--------------------------------------------------------------------------------------"
+        echo "INFO: Data from $SRC_TABLE has been imported successfully to $TARGET_HIVE_TABLE"
+        echo "INFO: Script Execution has been completed Successfully"
+        echo "-------------------------------------------------------------------------------------------"
+
+else
+
+        echo -e "\n----- Step 1: Hive Database and Table Check -----"
+
+        echo "INFO: Starting STAGE Hive database validation ..."
+
+                        if [ "$IS_TARGET_TABLE" == "Y" ]; then
+
+                                        if [ -z "$STAGE_HIVE_DB" ]; then
+                                                        echo "INFO: The Hive Database is not provided. The default database will be used"
+                                                        echo "INFO: Proceeding with next steps ..."
+                                                        STAGE_HIVE_DB="DEFAULT"
+                                        else
+                                                        echo "INFO: Executing hive command: beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e \"use ${STAGE_HIVE_DB}\""
+                                                        beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "use ${STAGE_HIVE_DB};"
+							#spark_program_func "use ${STAGE_HIVE_DB}"
+                                                        if [ $? != 0 ]; then
+                                                                        echo "INFO: The hive database ${STAGE_HIVE_DB} doesn't exist. The database will be created"
+                                                                        beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "create database ${STAGE_HIVE_DB};"
+									#spark_program_func "create database ${STAGE_HIVE_DB}"
+									impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${STAGE_HIVE_DB};"
+                                                                        beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "use ${STAGE_HIVE_DB};"
+									#spark_program_func "use ${STAGE_HIVE_DB}"
+                                                        else
+                                                                        echo "INFO: The hive database ${STAGE_HIVE_DB} exists. Proceeding with next steps ..."
+                                                        fi
+                                        fi
+
+
+
+                                        STAGE_HIVE_TABLE=${STAGE_HIVE_DB}.${STAGE_HIVE_TABLE}
+                                        AUDIT_TABLE=${AUDIT_DB}.${AUDIT_TABLE}
+
+                                        echo "STAGE_HIVE_TABLE: ${STAGE_HIVE_TABLE}"
+                                        echo "AUDIT_TABLE: ${AUDIT_TABLE}"
+
+                                        beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} -e "CREATE TABLE IF NOT EXISTS ${AUDIT_TABLE} (PROCESS_ID INT, PROCESS_DESC VARCHAR(250),JOB_NAME VARCHAR(250),DATA_PROV_NAME VARCHAR(100),DATA_SET VARCHAR(100),STAGE_HIVE_DB VARCHAR(100),TARGET_HIVE_DB VARCHAR(100),STAGE_HIVE_TABLE VARCHAR(100),TARGET_HIVE_TABLE VARCHAR(100),STRT_TIME VARCHAR(100),END_TIME VARCHAR(100),src_table_cnt_stg VARCHAR(100),stg_table_cnt_master VARCHAR(100),tgt_table_cnt_master VARCHAR(100),STATUS VARCHAR(100),ERR_DSC VARCHAR(500)) ROW FORMAT SERDE  'org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe' STORED AS INPUTFORMAT 'org.apache.hadoop.mapred.TextInputFormat' OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat';"
+
+#spark_program_func "CREATE TABLE IF NOT EXISTS ${AUDIT_TABLE} (PROCESS_ID INT, PROCESS_DESC VARCHAR(250),JOB_NAME VARCHAR(250),DATA_PROV_NAME VARCHAR(100),DATA_SET VARCHAR(100),STAGE_HIVE_DB VARCHAR(100),TARGET_HIVE_DB VARCHAR(100),STAGE_HIVE_TABLE VARCHAR(100),TARGET_HIVE_TABLE VARCHAR(100),STRT_TIME VARCHAR(100),END_TIME VARCHAR(100),src_table_cnt_stg VARCHAR(100),stg_table_cnt_master VARCHAR(100),tgt_table_cnt_master VARCHAR(100),STATUS VARCHAR(100),ERR_DSC VARCHAR(500)) ROW FORMAT SERDE  'org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe' STORED AS INPUTFORMAT 'org.apache.hadoop.mapred.TextInputFormat' OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat'"
+
+                                        echo -e "\n INFO: Calculating process id for audit table insertion"
+                                        echo "INFO: Executing hive command: mpala-shell -k -i ${IMPALA_SHELL} Process_id"
+					impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${AUDIT_TABLE};" 
+					PROCESS_ID=`impala-shell -k -i ${IMPALA_SHELL} -B -q "select case when max(process_id) is null then 1 else max(process_id)+1 end as process_id  from ${AUDIT_TABLE};" --quiet`
+                                        echo -e "PROCESS_ID : ${PROCESS_ID}"
+
+
+                                        echo -e "\n INFO: Checking Hive table..."
+                                        ##echo "INFO: Executing hive command: beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e \"SELECT * FROM ${STAGE_HIVE_TABLE} LIMIT 1\""
+                                        if [ -z "$STAGE_HIVE_TABLE" ]; then
+                                                        ERR_DSC="Error: STAGE_HIVE_TABLE value is not provided in parameter file"
+                                                        echo "${ERR_DSC}"
+                                                        END_TIME=`date +'%Y-%m-%d %H:%M:%S'`
+                                                        STATUS="FAILED"
+                                                        echo "INFO: Inserting an entry into audit table and exit process..."
+                                                        beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} -e "insert into ${AUDIT_TABLE} values (${PROCESS_ID},'${PROCESS_DESC}','${JOB_NAME}','${DATA_PROV_NAME}','${DATA_SET}','${SRC_DB}','${STAGE_HIVE_DB}','${SRC_TABLE}','${STAGE_HIVE_TABLE}','${STRT_TIME}','${END_TIME}',0,0,0,'${STATUS}','${ERR_DSC}');"
+							#spark_program_func "insert into ${AUDIT_TABLE} values (${PROCESS_ID},'${PROCESS_DESC}','${JOB_NAME}','${DATA_PROV_NAME}','${DATA_SET}','${SRC_DB}','${STAGE_HIVE_DB}','${SRC_TABLE}','${STAGE_HIVE_TABLE}','${STRT_TIME}','${END_TIME}',0,0,0,'${STATUS}','${ERR_DSC}')"
+							impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${AUDIT_TABLE};"
+
+                                                        exit 1
+
+                                        else
+                                                        beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "SELECT * FROM ${STAGE_HIVE_TABLE} LIMIT 1;"
+							#spark_program_func "SELECT * FROM ${STAGE_HIVE_TABLE} LIMIT 1"
+                                                        if [ $? != 0 ]; then
+                                                                        echo "INFO:$? ${STAGE_HIVE_TABLE} table doesn't exists in Hive. create target table in Hive with same structure as source table"
+                                                                        stage_hive_table_exists="No"
+                                                        else
+                                                                        echo "INFO:$? ${STAGE_HIVE_TABLE} exists in Hive. Proceed for next step..."
+                                                                        stage_hive_table_exists="Yes"
+                                                        fi
+                                        fi
+
+                                        echo -e "\n----- Step 2: apply operations on Hive table for full or delta Calculation ------"
+                                        echo -e "\n INFO: apply operations on Hive table..."
+
+                                        if [ "$SOURCE_PULL_REQUIRE_TARGET_VALUE_IND" == "Y" ]; then
+                                                        echo "\n INFO: get the increment value from target/Hive table"
+                                                        echo "INFO: The query for max modified date calculation: ${TARGET_QRY_FOR_INCREMENT_VALUE}"
+							#Check
+                                                        #increment_pull_value=`beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "${TARGET_QRY_FOR_INCREMENT_VALUE};" `
+							increment_pull_value=`impala-shell -k -i ${IMPALA_SHELL} -B -q "${TARGET_QRY_FOR_INCREMENT_VALUE};" --quiet`
+
+                                                        echo "INFO: increamental value from Target table is : ${increment_pull_value}"
+
+                                                        if [ "$SOURCE_QUERY_OR_TABLE_INDICATOR" == "TABLE" ]; then
+                                                                        echo "INFO: Query for incremental pull is : select count(*) from ${SRC_TABLE} where ${WHERE_CONDITION} and ${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}'"
+
+                                                                       
+								 if [ $(echo "$Driver" | grep "oracle" | wc -l) -gt 0 ]; then
+									echo "sqoop eval -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect ${ConnectionURL} --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --query select cast(count(*) as bigint) from ${SRC_TABLE} where ${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION}"
+                                                                                src_table_cnt=`sqoop eval -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --query "select cast(count(*) as bigint) from ${SRC_TABLE} where ${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION}"`
+
+								 elif [ -n "$Driver" ]; then
+
+                                                                        echo "sqoop eval -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect ${ConnectionURL} --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --query select cast(count(*) as bigint) from ${SRC_TABLE} where ${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION}"
+                                                                                src_table_cnt=`sqoop eval -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --query "select cast(count(*) as bigint) from ${SRC_TABLE} where ${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION}"`
+								
+								  elif [ $(echo "$ConnectionURL" | grep "oracle" | wc -l) -gt 0 ]; then
+									echo "sqoop eval -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect ${ConnectionURL}=${SRC_DB} --username ${UserName} --password-alias ${PasswordAllias} --query select cast(count(*) as bigint) from ${SRC_TABLE} where ${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION}"
+                                                                                src_table_cnt=`sqoop eval -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --query "select cast(count(*) as bigint) from ${SRC_TABLE} where ${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION}" ${CLOUDERA_PARAMS}`
+								  	
+                                                                  else
+                                                                        echo "sqoop eval -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect ${ConnectionURL}=${SRC_DB} --username ${UserName} --password-alias ${PasswordAllias} --query select cast(count(*) as bigint) from ${SRC_TABLE} where ${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION}"
+                                                                                src_table_cnt=`sqoop eval -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}=${SRC_DB}" --username ${UserName} --password-alias ${PasswordAllias} --query "select cast(count(*) as bigint) from ${SRC_TABLE} where ${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION}"`
+
+                                                                        fi
+
+                                                        else
+
+                                                                        echo "INFO: Query for incremental pull is : ${QUERY_TO_PULL_FROM_SOURCE} and ${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} ${increment_pull_value}"
+
+                                                                        if [ -n "$Driver" ]; then
+echo "sqoop eval -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --query select count(*) from ${QUERY_TO_PULL_FROM_SOURCE} and ${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}'"
+
+                                                                                src_table_cnt=`sqoop eval -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --query "select count(*) from (${QUERY_TO_PULL_FROM_SOURCE} and ${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}')"`
+
+                                                                        else
+                                                                echo "sqoop eval -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect ${ConnectionURL}=${SRC_DB} --username ${UserName} --password-alias ${PasswordAllias} --query select cast(count(*) as bigint) from (${QUERY_TO_PULL_FROM_SOURCE} and ${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}') as foo"
+                                                                                src_table_cnt=`sqoop eval -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}=${SRC_DB}" --username ${UserName} --password-alias ${PasswordAllias} --query "select cast(count(*) as bigint) from (${QUERY_TO_PULL_FROM_SOURCE} and ${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}') as foo;"`
+
+                                                                        fi
+                                                        fi
+                                        else
+                                                        echo "\n INFO: value from Target is not required while pulling data from source table"
+
+                                                        if [ "$SOURCE_QUERY_OR_TABLE_INDICATOR" == "TABLE" ]; then
+                                                                        echo "INFO: Query for data pull is : select count(*) from ${SRC_TABLE} where ${WHERE_CONDITION}"
+
+								if [ $(echo "$Driver" | grep "oracle" | wc -l) -gt 0 ]; then
+									echo "sqoop eval -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect ${ConnectionURL} --username ${UserName} --password-alias ${PasswordAllias} --${Driver} --query select count(*) from ${SRC_TABLE} where ${WHERE_CONDITION}"
+                                                                        src_table_cnt=`sqoop eval -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --query "select count(*) from ${SRC_TABLE} where ${WHERE_CONDITION}"`
+									
+                                                                elif [ -n "$Driver" ]; then
+
+                                                                echo "sqoop eval -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect ${ConnectionURL} --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --query select count(*) from ${SRC_TABLE} where ${WHERE_CONDITION}"
+                                                                        src_table_cnt=`sqoop eval -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --query "select count(*) from ${SRC_TABLE} where ${WHERE_CONDITION}"`
+
+								elif [ $(echo "$ConnectionURL" | grep "oracle" | wc -l) -gt 0 ]; then
+									echo "Oracle: sqoop eval -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}=${SRC_DB}" --username ${UserName} --password-alias ${PasswordAllias} --query select cast(count(*) as bigint) from ${SRC_TABLE} where ${WHERE_CONDITION}"
+
+                                                                        #src_table_cnt=`sqoop eval -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --query "select cast(count(*) as bigint) from ${SRC_TABLE} where ${WHERE_CONDITION}" ${CLOUDERA_PARAMS}`
+
+							#		src_table_cnt=`sqoop eval -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}=${SRC_DB}" --username ${UserName} --password-alias ${PasswordAllias} --query "select cast(count(*) as bigint) from (select * from ${SRC_TABLE} where ${WHERE_CONDITION}) as foo;"`
+
+									src_table_cnt=`sqoop eval -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}=${SRC_DB}" --username ${UserName} --password-alias ${PasswordAllias} --query "select cast(count(*) as bigint) from (${QUERY_TO_PULL_FROM_SOURCE}) as foo;"`
+                                                                else
+
+                                                                echo "sqoop eval -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect ${ConnectionURL}=${SRC_DB} --username ${UserName} --password-alias ${PasswordAllias} --query select cast(count(*) as bigint) from ${SRC_TABLE} where ${WHERE_CONDITION}"
+
+                                                                        src_table_cnt=`sqoop eval -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}=${SRC_DB}" --username ${UserName} --password-alias ${PasswordAllias} --query "select cast(count(*) as bigint) from ${SRC_TABLE} where ${WHERE_CONDITION}"`
+                                                                fi
+
+                                                        else
+                                                                        echo "INFO: Query for incremental pull is : ${QUERY_TO_PULL_FROM_SOURCE}"
+
+                                                                if [ -n "$Driver" ]; then
+
+                                                                        echo "sqoop eval -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect ${ConnectionURL} --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --query select count(*) from (${QUERY_TO_PULL_FROM_SOURCE})"
+                                                                        src_table_cnt=`sqoop eval -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --query "select count(*) from (${QUERY_TO_PULL_FROM_SOURCE})"`
+
+                                                                else
+                                                                echo "sqoop eval -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect ${ConnectionURL}=${SRC_DB} --username ${UserName} --password-alias ${PasswordAllias} --query select cast(count(*) as bigint) from (${QUERY_TO_PULL_FROM_SOURCE}) as foo"
+                                                                        src_table_cnt=`sqoop eval -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}=${SRC_DB}" --username ${UserName} --password-alias ${PasswordAllias} --query "select cast(count(*) as bigint) from (${QUERY_TO_PULL_FROM_SOURCE}) as foo;"`
+                                                                fi
+                                                        fi
+
+                                        fi
+
+                                        src_table_cnt=`echo $src_table_cnt | cut -d'|' -f4`
+                                        src_table_cnt=`echo $src_table_cnt | tr -s " "`
+
+
+                                        if [ "$PRE_SQL_FOR_TARGET" != "" ]; then
+                                                        echo "INFO: execute pre sql statement : $PRE_SQL_FOR_TARGET"
+                                                        #Check
+							beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "${PRE_SQL_FOR_TARGET} ; "
+							#spark_program_func "${PRE_SQL_FOR_TARGET}"
+                                        fi
+
+                                        echo "\n INFO: source count value is : ${src_table_cnt}"
+
+                                        if [ "$stage_hive_table_exists" = "Yes" ];then
+                                                        beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "SELECT * FROM ${STAGE_HIVE_TABLE} LIMIT 1;"
+							#spark_program_func "SELECT * FROM ${STAGE_HIVE_TABLE} LIMIT 1"
+                                                        if [ $? != 0 ]; then
+                                                                        stg_table_cnt_before_process=0
+                                                        else
+                                                                        stg_table_cnt_before_process=`beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "select count(*) from ${STAGE_HIVE_TABLE};" `
+									echo "stg_table_cnt_before_process=impala-shell -k -i ${IMPALA_SHELL} -B -q select count(*) from ${STAGE_HIVE_TABLE}; --quiet"
+									#impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${STAGE_HIVE_TABLE};"
+									#stg_table_cnt_before_process=`impala-shell -k -i ${IMPALA_SHELL} -B -q "select count(*) from ${STAGE_HIVE_TABLE};" --quiet`
+									echo "$stg_table_cnt_before_process STG table count"
+                                                        fi
+                                        else
+                                                        stg_table_cnt_before_process=0
+                                        fi
+                                        echo "Record count for Staging table before Sqoop Import: ${stg_table_cnt_before_process}"
+
+
+                                        echo -e "\n----- Step 3: source table Validation ------"
+                                        echo "INFO: Getting count of records from source table ..."
+					
+					echo "Src Table: ${src_table_cnt}"
+					echo "Src Table B4: ${stg_table_cnt_before_process}"
+                                        table_cnt_diff=`expr ${src_table_cnt} - ${stg_table_cnt_before_process}`
+                                        echo "\n INFO: source vs target count difference is : ${table_cnt_diff}"
+
+
+                                        if [ "${table_cnt_diff}" -eq 0 ] ; then
+                                                        ERR_DSC="INFO: No new records found in Teradata table $SRC_TABLE since last pull"
+                                                        echo "${ERR_DSC}"
+                                                        END_TIME=`date +'%Y-%m-%d %H:%M:%S'`
+                                                        STATUS="FAILED"
+                                                        echo "INFO: Inserting an entry into audit table..."
+                                                        beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "insert into ${AUDIT_TABLE} values (${PROCESS_ID},'${PROCESS_DESC}','${JOB_NAME}','${DATA_PROV_NAME}','${DATA_SET}','${SRC_DB}','${STAGE_HIVE_DB}','${SRC_TABLE}','${STAGE_HIVE_TABLE}','${STRT_TIME}','${END_TIME}',${src_table_cnt},${src_table_cnt},${stg_table_cnt_before_process},'${STATUS}','${ERR_DSC}');"
+							#spark_program_func "insert into ${AUDIT_TABLE} values (${PROCESS_ID},'${PROCESS_DESC}','${JOB_NAME}','${DATA_PROV_NAME}','${DATA_SET}','${SRC_DB}','${STAGE_HIVE_DB}','${SRC_TABLE}','${STAGE_HIVE_TABLE}','${STRT_TIME}','${END_TIME}',${src_table_cnt},${src_table_cnt},${stg_table_cnt_before_process},'${STATUS}','${ERR_DSC}')"
+							impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${AUDIT_TABLE};"
+                                                        exit 0
+                                        else
+                                                        echo "INFO: Total number of incremental records to be inserted: $src_table_cnt"
+                                        fi
+                        else
+
+                                        AUDIT_TABLE=${AUDIT_DB}.${AUDIT_TABLE}
+
+                                        echo "AUDIT_TABLE: ${AUDIT_TABLE}"
+
+                                        echo -e "\n INFO: Calculating process id for audit table insertion"
+                                        echo "INFO: Executing hive command: beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e \"select case when max(process_id) is null then 1 else max(process_id)+1 end as process_id  from ${AUDIT_TABLE}\""
+                                        #PROCESS_ID=`beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "select case when max(process_id) is null then 0 else max(process_id)+1 end as process_id  from ${AUDIT_TABLE};" `
+					impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${AUDIT_TABLE};"
+					PROCESS_ID=`impala-shell -k -i ${IMPALA_SHELL} -B -q "select case when max(process_id) is null then 0 else max(process_id)+1 end as process_id  from ${AUDIT_TABLE};" --quiet`
+                                        echo -e "PROCESS_ID : ${PROCESS_ID}"
+                                        if [ "$SOURCE_PULL_REQUIRE_TARGET_VALUE_IND" == "Y" ]; then
+                                                        echo "\n INFO: get the increment value from target/Hive table"
+                                                        echo "INFO: The query for max modified date calculation: ${TARGET_QRY_FOR_INCREMENT_VALUE}"
+                                                        #increment_pull_value=`beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "${TARGET_QRY_FOR_INCREMENT_VALUE};" `
+							increment_pull_value=`impala-shell -k -i ${IMPALA_SHELL} -B -q "${TARGET_QRY_FOR_INCREMENT_VALUE};" --quiet`
+                                                        echo "INFO: increamental value from Target table is : ${increment_pull_value}"
+                                        else
+                                                        echo "\n INFO: value from Target is not required while pulling data from source table"
+
+                                        fi
+
+                                        echo "INFO: Exporting to HDFS"
+                        fi
+                                        echo -e "\n----- Step 4: Sqoop Command Execution -----"
+                                        echo "INFO: Starting Sqoop Command Execution ..."
+
+
+        #echo "Sqoop Command:sqoop import -Dhadoop.security.credential.provider.path=jceks://hdfs/keystore/teradatap.password.jceks --connect "${ConnectionURL}=${SRC_DB}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where \"MODIFIED_DATE>'${max_modified_date}'\" --num-mappers ${TableMapperNum} --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --compress ${MAPHIVECOL}"
+
+        if [ "$SOURCE_PULL_REQUIRE_TARGET_VALUE_IND" == "Y" ] && [ "$DEFAULT_APACHE_CONNECTOR" == "Y" ]; then
+                                echo "\n INFO: Require value from target before pull data from source - incremental load"
+
+                        if [ "$SOURCE_QUERY_OR_TABLE_INDICATOR" == "TABLE" ]; then
+
+                                        if [ "$IS_TARGET_TABLE" == "Y" ]; then
+
+							if [ $(echo "$ConnectionURL" | grep "oracle" | wc -l) -gt 0 ]; then
+																
+																echo "INFO Oracle Connection 1: SQL Import process into table is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}=${SRC_DB}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where "${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} -- --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}"
+                                                                sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where "${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by "${SplitColumn}" --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}
+                                                        elif [ -n "$ConnectionURL" ]; then
+                                                                echo "INFO: SQL Import process into table is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}=${SRC_DB}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where "${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} -- --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}"
+                                                                sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect "${ConnectionURL}=${SRC_DB}${CHARSET}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where "${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by "${SplitColumn}" --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}
+
+
+							elif [ $(echo "$Driver" | grep "oracle" | wc -l) -gt 0 ]; then
+                                                                                                                                echo "INFO Oracle Driver1: SQL Import process into table is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect ${ConnectionURL} --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --table ${SRC_TABLE} --where "${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}"
+                                                                sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --"${Driver}" --table ${SRC_TABLE} --where "${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by "${SplitColumn}" --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}
+
+                                                       else
+
+                                                                                                                                echo "INFO: SQL Import process into table is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect ${ConnectionURL} --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --table ${SRC_TABLE} --where "${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}"
+                                                                sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --table ${SRC_TABLE} --where "${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by "${SplitColumn}" --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}
+                                                    fi
+                                                    
+                                        else
+
+                                                        if [ $(echo "$ConnectionURL" | grep "oracle" | wc -l) -gt 0 ]; then
+																echo "INFO Oracle Connection 1: SQL Import process into table is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}=${SRC_DB}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where "${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --split-by "${SplitColumn}" --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}"
+                                                                sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where "${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by "${SplitColumn}" --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}
+
+							elif [ -n "$ConnectionURL" ]; then
+                                                                echo "INFO: SQL Import process into table is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}=${SRC_DB}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where "${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --split-by "${SplitColumn}" --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}"
+                                                                sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect "${ConnectionURL}=${SRC_DB}${CHARSET}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where "${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by "${SplitColumn}" --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}
+
+
+							elif [ $(echo "$Driver" | grep "oracle" | wc -l) -gt 0 ]; then
+                                                                                                                                echo "INFO Driver 1: SQL Import process into file is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --table ${SRC_TABLE} --where ${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION} --num-mappers ${TableMapperNum} --split-by "${SplitColumn}" --target-dir  ${TGTFILEPATH_TS} --fields-terminated-by '|' -- --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}"
+                                                                sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --"${Driver}" --table ${SRC_TABLE} --where "${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by "${SplitColumn}" --target-dir  ${TGTFILEPATH_TS} --fields-terminated-by '|' --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}
+
+                                                         else
+                                                                echo "INFO: SQL Import process into file is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --table ${SRC_TABLE} --where ${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION} --num-mappers ${TableMapperNum} --split-by "${SplitColumn}" --target-dir  ${TGTFILEPATH_TS} --fields-terminated-by '|' -- --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}"
+                                                                sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --table ${SRC_TABLE} --where "${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by "${SplitColumn}" --target-dir  ${TGTFILEPATH_TS} --fields-terminated-by '|' --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}
+                                                        fi
+                                        fi
+                        else
+                                        if [ "$IS_TARGET_TABLE" == "Y" ]; then
+
+                                                        if [ -n "$Driver" ]; then
+                                                                echo "INFO: SQL Import process into table is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --query ${QUERY_TO_PULL_FROM_SOURCE} and ${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and \$CONDITIONS -m ${QueryMapperNum} --split-by "${SplitColumn}" --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir  ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}"
+                                                                sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --query "${QUERY_TO_PULL_FROM_SOURCE} and ${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and \$CONDITIONS" -m ${QueryMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by "${SplitColumn}" --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir  ${TGTFILEPATH_TS} --compress ${MAPHIVECOL} --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}
+
+                                                        else
+                                                                echo "INFO: SQL Import process into table is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}=${SRC_DB}" --username ${UserName} --password-alias ${PasswordAllias} --query ${QUERY_TO_PULL_FROM_SOURCE} and ${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and \$CONDITIONS -m ${QueryMapperNum} --split-by "${SplitColumn}" --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir  ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}"
+                                                                sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect "${ConnectionURL}=${SRC_DB}${CHARSET}" --username ${UserName} --password-alias ${PasswordAllias} --query "${QUERY_TO_PULL_FROM_SOURCE} and ${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and \$CONDITIONS" -m ${QueryMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by "${SplitColumn}" --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir  ${TGTFILEPATH_TS} --compress ${MAPHIVECOL} --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}
+
+                                                        fi
+                                        else
+
+                                                        if [ -n "$Driver" ]; then
+                                                                echo "INFO: SQL Import process into file is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --query ${QUERY_TO_PULL_FROM_SOURCE} and ${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and \$CONDITIONS -m ${QueryMapperNum} --split-by "${SplitColumn}" --target-dir  ${TGTFILEPATH_TS} --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}"
+                                                                sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --query "${QUERY_TO_PULL_FROM_SOURCE} and ${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and \$CONDITIONS" -m ${QueryMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by "${SplitColumn}" --target-dir  ${TGTFILEPATH_TS} --fields-terminated-by '|' --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}
+
+                                                        else
+                                                                echo "INFO: SQL Import process into file is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}=${SRC_DB}" --username ${UserName} --password-alias ${PasswordAllias} --query ${QUERY_TO_PULL_FROM_SOURCE} and ${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and \$CONDITIONS -m ${QueryMapperNum} --split-by "${SplitColumn}" --target-dir  ${TGTFILEPATH_TS} --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}"
+                                                                sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect "${ConnectionURL}=${SRC_DB}${CHARSET}" --username ${UserName} --password-alias ${PasswordAllias} --query "${QUERY_TO_PULL_FROM_SOURCE} and ${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and \$CONDITIONS" -m ${QueryMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by "${SplitColumn}" --target-dir  ${TGTFILEPATH_TS} --fields-terminated-by '|' --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}
+
+                                                        fi
+                                        fi
+                        fi
+
+        elif [ "$DEFAULT_APACHE_CONNECTOR" == "Y" ]; then
+				
+                        if [ "$SOURCE_QUERY_OR_TABLE_INDICATOR" == "TABLE" ]; then
+
+                            if [ "$IS_TARGET_TABLE" == "Y" ]; then
+
+                                
+				if [ $(echo "$ConnectionURL" | grep "oracle" | wc -l) -gt 0 ]; then
+										echo "INFO Oracle Connection 2: SQL Import process into table is : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect "${ConnectionURL}=${SRC_DB}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where ${WHERE_CONDITION} --num-mappers ${TableMapperNum} --split-by "${SplitColumn}" --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir  ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}"
+                                        sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where "${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by "${SplitColumn}" --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir  ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}
+
+				elif [ -n "$ConnectionURL" ]; then
+                                        echo "INFO: SQL Import process into table is : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect "${ConnectionURL}=${SRC_DB}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where ${WHERE_CONDITION} --num-mappers ${TableMapperNum} --split-by "${SplitColumn}" --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir  ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}"
+                                        sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect "${ConnectionURL}=${SRC_DB}${CHARSET}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where "${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by "${SplitColumn}" --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir  ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}
+				
+				elif [ $(echo "$Driver" | grep "oracle" | wc -l) -gt 0 ]; then
+                                                                                echo "INFO Oracle Driver 2: SQL Import process into table is : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --table ${SRC_TABLE} --where ${WHERE_CONDITION} --num-mappers ${TableMapperNum} --split-by "${SplitColumn}" --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir  ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}"
+                                        sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --driver ${Driver} --where "${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by "${SplitColumn}" --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir  ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}
+
+                                 else
+
+                                        echo "INFO: SQL Import process into table is : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --table ${SRC_TABLE} --where ${WHERE_CONDITION} --num-mappers ${TableMapperNum} --split-by "${SplitColumn}" --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir  ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}"
+                                        sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --table ${SRC_TABLE} --where "${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by "${SplitColumn}" --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir  ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}
+					
+                                fi
+
+			else
+							
+
+                                if [ $(echo "$ConnectionURL" | grep "oracle" | wc -l) -gt 0 ]; then
+										echo "INFO Oracle Connection 2: SQL Import process into file is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect "${ConnectionURL}=${SRC_DB}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where ${WHERE_CONDITION} --num-mappers ${TableMapperNum} --split-by "${SplitColumn}" --target-dir  ${TGTFILEPATH_TS} --fields-terminated-by '|' --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}"
+                                        sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where "${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by "${SplitColumn}" --target-dir  ${TGTFILEPATH_TS} --fields-terminated-by '|' --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}
+				elif [ -n "$ConnectionURL" ]; then
+                                        echo "INFO: SQL Import process into file is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect "${ConnectionURL}=${SRC_DB}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where ${WHERE_CONDITION} --num-mappers ${TableMapperNum} --split-by "${SplitColumn}" --target-dir  ${TGTFILEPATH_TS} --fields-terminated-by '|' --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}"
+                                        sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect "${ConnectionURL}=${SRC_DB}${CHARSET}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where "${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by "${SplitColumn}" --target-dir  ${TGTFILEPATH_TS} --fields-terminated-by '|' --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}
+				
+				elif [ $(echo "$Driver" | grep "oracle" | wc -l) -gt 0 ]; then
+                                                                                echo "INFO Oracle Driver 2: SQL Import process into file is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --table ${SRC_TABLE} --where ${WHERE_CONDITION} --num-mappers ${TableMapperNum} --split-by "${SplitColumn}" --target-dir  ${TGTFILEPATH_TS} --fields-terminated-by '|' --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}"
+                                        sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --"${Driver}" --table ${SRC_TABLE} --where "${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by "${SplitColumn}" --target-dir  ${TGTFILEPATH_TS} --fields-terminated-by '|' --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}
+
+                                 else
+                                        echo "INFO: SQL Import process into file is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --table ${SRC_TABLE} --where ${WHERE_CONDITION} --num-mappers ${TableMapperNum} --split-by "${SplitColumn}" --target-dir  ${TGTFILEPATH_TS} --fields-terminated-by '|' --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}"
+                                        sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --table ${SRC_TABLE} --where "${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by "${SplitColumn}" --target-dir  ${TGTFILEPATH_TS} --fields-terminated-by '|' --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}				
+
+                                fi
+
+							fi
+                        else
+                                        if [ "$IS_TARGET_TABLE" == "Y" ]; then
+
+                                                if [ -n "$Driver" ]; then
+                                                        echo "INFO: SQL Import process into table is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect "${ConnectionURL}"  --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --query ${QUERY_TO_PULL_FROM_SOURCE} AND \$CONDITIONS -m ${QueryMapperNum} --split-by "${SplitColumn}" --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir  ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}"
+                                                        sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --query "${QUERY_TO_PULL_FROM_SOURCE} AND \$CONDITIONS" -m ${QueryMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by "${SplitColumn}" --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir  ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}
+
+                                                else
+                                                        echo "INFO: SQL Import process into table is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect "${ConnectionURL}=${SRC_DB}" --username ${UserName} --password-alias ${PasswordAllias} --query ${QUERY_TO_PULL_FROM_SOURCE} AND \$CONDITIONS -m ${QueryMapperNum} --split-by "${SplitColumn}" --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir  ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}"
+                                                        sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect "${ConnectionURL}=${SRC_DB}${CHARSET}" --username ${UserName} --password-alias ${PasswordAllias} --query "${QUERY_TO_PULL_FROM_SOURCE} AND \$CONDITIONS" -m ${QueryMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by "${SplitColumn}" --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir  ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}
+                                                fi
+
+                                        else
+
+                                                if [ -n "$Driver" ]; then
+                                                        echo "INFO: SQL Import process  into file is : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --query ${QUERY_TO_PULL_FROM_SOURCE} AND \$CONDITIONS -m ${QueryMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by "${SplitColumn}" --target-dir  ${TGTFILEPATH_TS} --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}"
+                                                        sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --query "${QUERY_TO_PULL_FROM_SOURCE} AND \$CONDITIONS" -m ${QueryMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by "${SplitColumn}" --target-dir  ${TGTFILEPATH_TS} --fields-terminated-by '|' --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}
+
+                                                else
+                                                        echo "INFO: SQL Import process  into file is : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect "${ConnectionURL}=${SRC_DB}" --username ${UserName} --password-alias ${PasswordAllias}  --query ${QUERY_TO_PULL_FROM_SOURCE} AND \$CONDITIONS -m ${QueryMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by "${SplitColumn}" --target-dir  ${TGTFILEPATH_TS} --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}"
+                                                        sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} ${APACHE_CONNECTOR_LIB_PATH} --connect "${ConnectionURL}=${SRC_DB}${CHARSET}" --username ${UserName} --password-alias ${PasswordAllias} --query "${QUERY_TO_PULL_FROM_SOURCE} AND \$CONDITIONS" -m ${QueryMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by "${SplitColumn}" --target-dir  ${TGTFILEPATH_TS} --fields-terminated-by '|' --boundary-query "${BOUNDARY_QUERY_PARAMS}" ${SQOOP_PARAMS} ${CLOUDERA_PARAMS}
+                                                fi
+                                        fi
+
+                        fi
+
+
+
+        elif [ "$SOURCE_PULL_REQUIRE_TARGET_VALUE_IND" == "Y" ]; then
+                echo "\n INFO: Require value from target before pull data from source - incremental load"
+
+                        if [ "$SOURCE_QUERY_OR_TABLE_INDICATOR" == "TABLE" ]; then
+
+                                        if [ "$IS_TARGET_TABLE" == "Y" ]; then
+
+                                                        if [ $(echo "$ConnectionURL" | grep "oracle" | wc -l) -gt 0 ]; then	
+                                                                
+																echo "INFO Oracle Connection 3: SQL Import process into table is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where "${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} -- --input-method ${InputByMethod}"	
+                                                                sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where "${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} ${SQOOP_PARAMS} -- --input-method ${InputByMethod}
+																
+                                                        elif [ -n "$ConnectionURL" ]; then
+                                                                echo "INFO: SQL Import process into table is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}=${SRC_DB}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where "${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} -- --input-method ${InputByMethod}"
+                                                                sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}=${SRC_DB}${CHARSET}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where "${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} -- --input-method ${InputByMethod}
+
+							elif [ $(echo "$Driver" | grep "oracle" | wc -l) -gt 0 ]; then
+                                                                                                                                echo "INFO Oracle Driver 3: SQL Import process into table is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect ${ConnectionURL} --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --table ${SRC_TABLE} --where "${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} -- --input-method ${InputByMethod}"
+                                                                sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --"${Driver}" --table ${SRC_TABLE} --where "${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} -- --input-method ${InputByMethod}
+
+                                                         else
+                                                                echo "INFO: SQL Import process into table is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect ${ConnectionURL} --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --table ${SRC_TABLE} --where "${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} -- --input-method ${InputByMethod}"
+                                                                sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --table ${SRC_TABLE} --where "${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} -- --input-method ${InputByMethod}							
+
+                                                        fi
+
+                                        else
+																
+							if [ $(echo "$ConnectionURL" | grep "oracle" | wc -l) -gt 0 ]; then	
+														
+                                                                echo "INFO Oracle Connection 3: SQL Import process into table is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where "${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} -- --input-method ${InputByMethod}"	
+                                                                sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where "${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} ${SQOOP_PARAMS} -- --input-method ${InputByMethod}
+
+                                                        elif  [ -n "$ConnectionURL" ]; then
+                                                                echo "INFO: SQL Import process into table is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}=${SRC_DB}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where "${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} -- --input-method ${InputByMethod}"
+                                                                sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}=${SRC_DB}${CHARSET}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where "${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} -- --input-method ${InputByMethod}
+
+						 	
+							else
+                                                                echo "INFO: SQL Import process into file is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --table ${SRC_TABLE} --where ${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION} --num-mappers ${TableMapperNum} --split-by ${SplitColumn} --target-dir  ${TGTFILEPATH_TS} --fields-terminated-by '|' -- --input-method ${InputByMethod}"
+                                                                sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --table ${SRC_TABLE} --where "${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and ${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by ${SplitColumn} --target-dir  ${TGTFILEPATH_TS} --fields-terminated-by '|' -- --input-method ${InputByMethod}
+
+                                                        fi
+                                        fi
+                        else
+                                        if [ "$IS_TARGET_TABLE" == "Y" ]; then
+
+                                                        if [ -n "$Driver" ]; then
+                                                                echo "INFO: SQL Import process into table is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --query ${QUERY_TO_PULL_FROM_SOURCE} and ${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and \$CONDITIONS -m ${QueryMapperNum} --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir  ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL}"
+                                                                sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --query "${QUERY_TO_PULL_FROM_SOURCE} and ${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and \$CONDITIONS" -m ${QueryMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir  ${TGTFILEPATH_TS} --compress ${MAPHIVECOL}
+
+                                                        else
+                                                                echo "INFO: SQL Import process into table is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}=${SRC_DB}" --username ${UserName} --password-alias ${PasswordAllias} --query ${QUERY_TO_PULL_FROM_SOURCE} and ${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and \$CONDITIONS -m ${QueryMapperNum} --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir  ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL}"
+                                                                sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}=${SRC_DB}${CHARSET}" --username ${UserName} --password-alias ${PasswordAllias} --query "${QUERY_TO_PULL_FROM_SOURCE} and ${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and \$CONDITIONS" -m ${QueryMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir  ${TGTFILEPATH_TS} --compress ${MAPHIVECOL}
+
+                                                        fi
+                                        else
+
+                                                        if [ -n "$Driver" ]; then
+                                                                echo "INFO: SQL Import process into file is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --query ${QUERY_TO_PULL_FROM_SOURCE} and ${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and \$CONDITIONS -m ${QueryMapperNum} --split-by ${SplitColumn} --target-dir  ${TGTFILEPATH_TS}"
+                                                                sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --query "${QUERY_TO_PULL_FROM_SOURCE} and ${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and \$CONDITIONS" -m ${QueryMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by ${SplitColumn} --target-dir  ${TGTFILEPATH_TS} --fields-terminated-by '|'
+
+                                                        else
+                                                                echo "INFO: SQL Import process into file is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}=${SRC_DB}" --username ${UserName} --password-alias ${PasswordAllias} --query ${QUERY_TO_PULL_FROM_SOURCE} and ${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and \$CONDITIONS -m ${QueryMapperNum} --split-by ${SplitColumn} --target-dir  ${TGTFILEPATH_TS}"
+                                                                sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}=${SRC_DB}${CHARSET}" --username ${UserName} --password-alias ${PasswordAllias} --query "${QUERY_TO_PULL_FROM_SOURCE} and ${INCREMENT_SOURCE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}' and \$CONDITIONS" -m ${QueryMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by ${SplitColumn} --target-dir  ${TGTFILEPATH_TS} --fields-terminated-by '|'
+
+                                                        fi
+                                        fi
+                        fi
+        else
+                    if [ "$SOURCE_QUERY_OR_TABLE_INDICATOR" == "TABLE" ]; then
+
+                        if [ "$IS_TARGET_TABLE" == "Y" ]; then
+
+										
+				if [ $(echo "$ConnectionURL" | grep "oracle" | wc -l) -gt 0 ]; then
+								
+                                         echo "INFO Oracle Connection 4: SQL Import process into table is : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}=${SRC_DB}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where ${WHERE_CONDITION} --num-mappers ${TableMapperNum} --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir  ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} -- --input-method ${InputByMethod}"	
+                                        sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where "${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir  ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} ${SQOOP_PARAMS} -- --input-method ${InputByMethod}
+
+                                elif [ -n "$ConnectionURL" ]; then
+                                        echo "INFO: SQL Import process into table is : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}=${SRC_DB}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where ${WHERE_CONDITION} --num-mappers ${TableMapperNum} --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir  ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} -- --input-method ${InputByMethod}"
+                                        sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}=${SRC_DB}${CHARSET}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where "${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir  ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} -- --input-method ${InputByMethod}
+
+				elif [ $(echo "$Driver" | grep "oracle" | wc -l) -gt 0 ]; then
+                                                                                echo "INFO Oracle Driver 4: SQL Import process into table is : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --connection-manager org.apache.sqoop.manager.OracleManager --table ${SRC_TABLE} --where ${WHERE_CONDITION} --num-mappers ${TableMapperNum} --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir  ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} -- --input-method ${InputByMethod}"
+                                       # sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --${Driver} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where "${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir  ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} -- --input-method ${InputByMethod}
+
+
+                                                                sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --"${Driver}" --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where "${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir  ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} ${SQOOP_PARAMS} -- --input-method ${InputByMethod}
+				else
+
+                                                                                echo "INFO: SQL Import process into table is : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --connection-manager org.apache.sqoop.manager.OracleManager --table ${SRC_TABLE} --where ${WHERE_CONDITION} --num-mappers ${TableMapperNum} --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir  ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} -- --input-method ${InputByMethod}"
+                                        sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --connection-manager org.apache.sqoop.manager.OracleManager --table ${SRC_TABLE} --where "${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir  ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL} -- --input-method ${InputByMethod}
+                                fi
+
+                        else
+								
+				if [ $(echo "$ConnectionURL" | grep "oracle" | wc -l) -gt 0 ]; then	
+								
+                                        echo "INFO Oracle Connection 4: SQL Import process into file is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where ${WHERE_CONDITION} --num-mappers ${TableMapperNum} --split-by ${SplitColumn} --target-dir  ${TGTFILEPATH_TS} --fields-terminated-by '|' -- --input-method ${InputByMethod}"	
+                                        sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where "${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by ${SplitColumn} --target-dir  ${TGTFILEPATH_TS} --fields-terminated-by '|' ${SQOOP_PARAMS} -- --input-method ${InputByMethod}
+
+                                elif [ -n "$ConnectionURL" ]; then
+                                        echo "INFO: SQL Import process into file is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}=${SRC_DB}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where ${WHERE_CONDITION} --num-mappers ${TableMapperNum} --split-by ${SplitColumn} --target-dir  ${TGTFILEPATH_TS} --fields-terminated-by '|' -- --input-method ${InputByMethod}"
+                                        sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}=${SRC_DB}${CHARSET}" --username ${UserName} --password-alias ${PasswordAllias} --table ${SRC_TABLE} --where "${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by ${SplitColumn} --target-dir  ${TGTFILEPATH_TS} --fields-terminated-by '|' -- --input-method ${InputByMethod}
+				elif [ $(echo "$Driver" | grep "oracle" | wc -l) -gt 0 ]; then
+                                                                                echo "INFO Oracle Driver 4: SQL Import process into file is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --connection-manager org.apache.sqoop.manager.OracleManager --table ${SRC_TABLE} --where ${WHERE_CONDITION} --num-mappers ${TableMapperNum} --split-by ${SplitColumn} --target-dir  ${TGTFILEPATH_TS} --fields-terminated-by '|' -- --input-method ${InputByMethod}"
+                                        sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --"${Driver}" --table ${SRC_TABLE} --where "${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by ${SplitColumn} --target-dir  ${TGTFILEPATH_TS} --fields-terminated-by '|' -- --input-method ${InputByMethod}
+
+                                else
+                                        echo "INFO: SQL Import process into file is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --connection-manager org.apache.sqoop.manager.OracleManager --table ${SRC_TABLE} --where ${WHERE_CONDITION} --num-mappers ${TableMapperNum} --split-by ${SplitColumn} --target-dir  ${TGTFILEPATH_TS} --fields-terminated-by '|' -- --input-method ${InputByMethod}"
+                                        sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --table ${SRC_TABLE} --where "${WHERE_CONDITION}" --num-mappers ${TableMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by ${SplitColumn} --target-dir  ${TGTFILEPATH_TS} --fields-terminated-by '|' -- --input-method ${InputByMethod}
+                                fi
+
+                        fi
+                    else
+                                if [ "$IS_TARGET_TABLE" == "Y" ]; then
+
+                                            if [ -n "$Driver" ]; then
+                                                        echo "INFO: SQL Import process into table is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}"  --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --query ${QUERY_TO_PULL_FROM_SOURCE} AND \$CONDITIONS -m ${QueryMapperNum} --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir  ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL}"
+                                                        sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --query "${QUERY_TO_PULL_FROM_SOURCE} AND \$CONDITIONS" -m ${QueryMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir  ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL}
+
+                                            else
+                                                        echo "INFO: SQL Import process into table is  : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}=${SRC_DB}" --username ${UserName} --password-alias ${PasswordAllias} --query ${QUERY_TO_PULL_FROM_SOURCE} AND \$CONDITIONS -m ${QueryMapperNum} --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir  ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL}"
+                                                        sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}=${SRC_DB}${CHARSET}" --username ${UserName} --password-alias ${PasswordAllias} --query "${QUERY_TO_PULL_FROM_SOURCE} AND \$CONDITIONS" -m ${QueryMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by ${SplitColumn} --hive-import --hive-table ${STAGE_HIVE_TABLE} --target-dir  ${TGTFILEPATH_TS} --compress  ${MAPHIVECOL}
+                                            fi
+
+                                else
+
+                                            if [ -n "$Driver" ]; then
+                                                        echo "INFO: SQL Import process  into file is : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --query ${QUERY_TO_PULL_FROM_SOURCE} AND \$CONDITIONS -m ${QueryMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by ${SplitColumn} --target-dir  ${TGTFILEPATH_TS}"
+                                                        sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}" --username ${UserName} --password-alias ${PasswordAllias} --driver ${Driver} --query "${QUERY_TO_PULL_FROM_SOURCE} AND \$CONDITIONS" -m ${QueryMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by ${SplitColumn} --target-dir  ${TGTFILEPATH_TS} --fields-terminated-by '|'
+
+                                            else
+                                                        echo "INFO: SQL Import process  into file is : sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}=${SRC_DB}" --username ${UserName} --password-alias ${PasswordAllias}  --query ${QUERY_TO_PULL_FROM_SOURCE} AND \$CONDITIONS -m ${QueryMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by ${SplitColumn} --target-dir  ${TGTFILEPATH_TS}"
+                                                        sqoop import -Dmapred.job.queue.name=${queueName} -Dhadoop.security.credential.provider.path=${SecretKeyPath} --connect "${ConnectionURL}=${SRC_DB}${CHARSET}" --username ${UserName} --password-alias ${PasswordAllias} --query "${QUERY_TO_PULL_FROM_SOURCE} AND \$CONDITIONS" -m ${QueryMapperNum} --null-string "\\\\N" --null-non-string "\\\\N" --split-by ${SplitColumn} --target-dir  ${TGTFILEPATH_TS} --fields-terminated-by '|'
+                                            fi
+                                fi
+
+                        fi
+
+        fi
+        if [ $? == 0 ]; then
+                        echo -e "\n INFO: Import has been completed successfully"
+                        echo "INFO: Total Number of source records read from ${SRC_TABLE}: $src_table_cnt"
+			echo "INFO:Invalidate Metadata after the sqoop"
+			#impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${STAGE_HIVE_TABLE};"
+                                        if [ "$IS_TARGET_TABLE" == "Y" ]; then
+                                                        stg_table_cnt_after_process=`beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "select count(*) from ${STAGE_HIVE_TABLE};" `
+							#stg_table_cnt_after_process=`impala-shell -k -i ${IMPALA_SHELL} -B -q "select count(*) from ${STAGE_HIVE_TABLE};" --quiet`
+                                                        echo "Record count for Staging table after Sqoop Import: ${stg_table_cnt_after_process}"
+                                                        stg_tgt_table_cnt=`expr ${stg_table_cnt_after_process} - ${stg_table_cnt_before_process}`
+                                                        echo "INFO: Total Number of target records inserted in ${STAGE_HIVE_TABLE}: ${stg_tgt_table_cnt}"
+                                        else
+                                                        hdfs dfs -test -d $TGTFILEPATH
+                                                        if [ $? == 0 ]; then
+                                                                        echo "${TGTFILEPATH} already exists. The directory will be emptied."
+                                                                        hdfs dfs -mv ${TGTFILEPATH}/${SRC_TABLE}* ${BKPFILEPATH}/${SRC_TABLE}_${TIMESTAMP}.txt
+                                                                        hdfs dfs -rm -r ${TGTFILEPATH}/*
+                                                        else
+                                                                        hdfs dfs -mkdir ${TGTFILEPATH}
+                                                        fi
+                                                        hdfs dfs -cat ${TGTFILEPATH_TS}/part-m-* | hadoop fs -appendToFile - ${TGTFILEPATH}/${SRC_TABLE}.txt
+                                                        hdfs dfs -rm -r ${TGTFILEPATH_TS}
+                                        fi
+        else
+                        ERR_DSC="ERROR: Sqoop Command Failed. Please see sqoop log for more details"
+                        echo "${ERR_DSC}"
+                        END_TIME=`date +'%Y-%m-%d %H:%M:%S'`
+                        STATUS="FAILED"
+                        echo -e "\nINFO: Inserting record into audit table..."
+                        beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "insert into ${AUDIT_TABLE} values (${PROCESS_ID},'${PROCESS_DESC}','${JOB_NAME}','${DATA_PROV_NAME}','${DATA_SET}','${SRC_DB}','${STAGE_HIVE_DB}','${SRC_TABLE}','${STAGE_HIVE_TABLE}','${STRT_TIME}','${END_TIME}',0,${src_table_cnt},0,'${STATUS}','${ERR_DSC}');"
+			#spark_program_func "insert into ${AUDIT_TABLE} values (${PROCESS_ID},'${PROCESS_DESC}','${JOB_NAME}','${DATA_PROV_NAME}','${DATA_SET}','${SRC_DB}','${STAGE_HIVE_DB}','${SRC_TABLE}','${STAGE_HIVE_TABLE}','${STRT_TIME}','${END_TIME}',0,${src_table_cnt},0,'${STATUS}','${ERR_DSC}')"
+			impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${AUDIT_TABLE};"
+                        exit 1
+        fi
+
+                        if [ "$IS_TARGET_TABLE" == "Y" ]; then
+                                        echo -e "\n----- Step 5: Stage Hive Table Validations -----"
+                                        echo "INFO: Starting validation checks ..."
+                                        if [ "${src_table_cnt}" == "${stg_tgt_table_cnt}" ]; then
+                                                                        echo -e "\nINFO: The count of records matches between ${SRC_TABLE} in Teradata and ${STAGE_HIVE_TABLE} in Hive"
+                                                                        END_TIME=`date +'%Y-%m-%d %H:%M:%S'`
+                                                                        STATUS="SUCCEEDED"
+                                                                        echo "INFO: Inserting an entry into audit table..."
+                                                                        beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "insert into ${AUDIT_TABLE} values (${PROCESS_ID},'${PROCESS_DESC}','${JOB_NAME}','${DATA_PROV_NAME}','${DATA_SET}','${SRC_DB}','${STAGE_HIVE_DB}','${SRC_TABLE}','${STAGE_HIVE_TABLE}','${STRT_TIME}','${END_TIME}',${src_table_cnt},${src_table_cnt},${stg_tgt_table_cnt},'${STATUS}','');"
+									#spark_program_func "insert into ${AUDIT_TABLE} values (${PROCESS_ID},'${PROCESS_DESC}','${JOB_NAME}','${DATA_PROV_NAME}','${DATA_SET}','${SRC_DB}','${STAGE_HIVE_DB}','${SRC_TABLE}','${STAGE_HIVE_TABLE}','${STRT_TIME}','${END_TIME}',${src_table_cnt},${src_table_cnt},${stg_tgt_table_cnt},'${STATUS}','')"
+									#impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${AUDIT_TABLE};"
+                                                                        echo "INFO: An entry has been inserted into audit table"
+                                        else
+                                                                        echo -e "\nINFO: The count of records doesn't match between ${SRC_TABLE} in Teradata and ${STAGE_HIVE_TABLE} in Hive"
+                                                                        echo "INFO: Please check for the log for more details. "
+                                                                        ERR_DSC="ERROR: The count of records in Teradata and Hive is not matching"
+                                                        STATUS="FAILED"
+                                                                        END_TIME=`date +'%Y-%m-%d %H:%M:%S'`
+                                                                        echo "INFO: Inserting an entry into audit table..."
+                                                                        beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "insert into ${AUDIT_TABLE} values (${PROCESS_ID},'${PROCESS_DESC}','${JOB_NAME}','${DATA_PROV_NAME}','${DATA_SET}','${SRC_DB}','${STAGE_HIVE_DB}','${SRC_TABLE}','${STAGE_HIVE_TABLE}','${STRT_TIME}','${END_TIME}',${src_table_cnt},${stg_tgt_table_cnt},${stg_tgt_table_cnt},'${STATUS}','${ERR_DSC}');"
+									#spark_program_func "insert into ${AUDIT_TABLE} values (${PROCESS_ID},'${PROCESS_DESC}','${JOB_NAME}','${DATA_PROV_NAME}','${DATA_SET}','${SRC_DB}','${STAGE_HIVE_DB}','${SRC_TABLE}','${STAGE_HIVE_TABLE}','${STRT_TIME}','${END_TIME}',${src_table_cnt},${stg_tgt_table_cnt},${stg_tgt_table_cnt},'${STATUS}','${ERR_DSC}')"
+									impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${AUDIT_TABLE};"
+                                                                        exit 1
+                                        fi
+
+
+                                        echo -e "\n----- Step 6: Target table creation in Parquet format -----"
+
+                                        echo "INFO: Starting TARGET Hive database validation ..."
+
+                                        if [ -z "$TARGET_HIVE_DB" ]; then
+                                                        echo "INFO: The Hive Database is not provided. The default database will be used"
+                                                        echo "INFO: Proceeding with next steps ..."
+                                                        TARGET_HIVE_DB="DEFAULT"
+                                        else
+                                                        echo "INFO: Executing hive command: beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e \"use ${TARGET_HIVE_DB}\""
+                                                        beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} -e "use ${TARGET_HIVE_DB};"
+							#spark_program_func "use ${TARGET_HIVE_DB}"
+                                                        if [ $? != 0 ]; then
+                                                                        echo "INFO: The hive database ${TARGET_HIVE_DB} doesn't exist. The database will be created"
+                                                                        beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "create database ${TARGET_HIVE_DB};"
+									#spark_program_func "create database ${TARGET_HIVE_DB}"
+									impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${TARGET_HIVE_DB};"
+                                                                        #beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "use ${TARGET_HIVE_DB};"
+									#spark_program_func "use ${TARGET_HIVE_DB}"
+                                                        else
+                                                                        echo "INFO: The hive database ${TARGET_HIVE_DB} exists. Proceeding with next steps ..."
+                                                        fi
+                                        fi
+
+                                        TARGET_HIVE_TABLE=${TARGET_HIVE_DB}.${TARGET_HIVE_TABLE}
+                                        echo "TARGET_HIVE_TABLE: ${TARGET_HIVE_TABLE}"
+
+                                        echo -e "\n INFO: Checking target Hive table..."
+                                        ##echo "INFO: Executing hive command: beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e \"SELECT * FROM ${TARGET_HIVE_TABLE} LIMIT 1\""
+                                        if [ -z "$TARGET_HIVE_TABLE" ]; then
+                                                        ERR_DSC="Error: TARGET_HIVE_TABLE value is not provided in parameter file"
+                                                        echo "${ERR_DSC}"
+                                                        END_TIME=`date +'%Y-%m-%d %H:%M:%S'`
+                                                        STATUS="FAILED"
+                                                        echo "INFO: Inserting an entry into audit table and exit process..."
+                                                        beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2-e "insert into ${AUDIT_TABLE} values (${PROCESS_ID},'${PROCESS_DESC}','${JOB_NAME}','${DATA_PROV_NAME}','${DATA_SET}','${STAGE_HIVE_DB}','${TARGET_HIVE_DB}','${STAGE_HIVE_TABLE}','${TARGET_HIVE_TABLE}','${STRT_TIME}','${END_TIME}',0,0,0,'${STATUS}','${ERR_DSC}');"
+							#spark_program_func "insert into ${AUDIT_TABLE} values (${PROCESS_ID},'${PROCESS_DESC}','${JOB_NAME}','${DATA_PROV_NAME}','${DATA_SET}','${STAGE_HIVE_DB}','${TARGET_HIVE_DB}','${STAGE_HIVE_TABLE}','${TARGET_HIVE_TABLE}','${STRT_TIME}','${END_TIME}',0,0,0,'${STATUS}','${ERR_DSC}')"
+							impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${AUDIT_TABLE};"
+
+                                                        exit 1
+
+                                        else
+
+                                                        if [ "$TRUNCATE_APPEND" == "TRUNCATE" ] || [ "$TRUNCATE_APPEND" == "INCREMENT" ]; then
+                                                                schemaforTrunIncrement=`beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=dsv -e "use ${STAGE_HIVE_DB};describe ${STAGE_HIVE_TABLE};"`
+								#spark_program_func "use ${STAGE_HIVE_DB}"
+								#schemaforTrunIncrement=`impala-shell -k -i ${IMPALA_SHELL} -B -q "describe ${STAGE_HIVE_TABLE};" --quiet`	
+                                                                echo $schemaforTrunIncrement
+                                                                schemaforTrunIncrement2=`echo "$schemaforTrunIncrement" | tr "\n" "," | tr "|" " "`
+                                                                echo $schemaforTrunIncrement2
+
+                                                                IFS=',' read -r -a createTableArray2 <<< "$PARTITION_COLUMNS"
+                                                                echo "$PARTITION_COLUMNS"
+
+                                                                IFS=',' read -r -a createTableArray <<< "$schemaforTrunIncrement2"
+
+                                                                for element in "${createTableArray[@]}"
+                                                                do
+                                                                        iLen=${#createTableArray2[@]}
+                                                                        IFS=' ' read -r -a StrCmp1 <<< "$element"
+                                                                        for element2 in "${createTableArray2[@]}"
+                                                                        do
+                                                                                IFS=' ' read -r -a StrCmp2 <<< "$element2"
+                                                                                if [ "${StrCmp1[0]}" = "${StrCmp2[0]}" ]; then
+                                                                                        echo "number found---------------------------------------------------------------------"
+                                                                                        InsertTableString+="${StrCmp2[0]}"",";
+                                                                                        break
+                                                                                elif [ "$iLen" -ne 1 ]; then
+                                                                                        let "iLen--"
+                                                                                        continue
+                                                                                else
+                                                                                        createTableArray3+=("$element")
+                                                                                fi
+                                                                        done
+                                                                done
+
+                                                                for (( i = 0 ; i < ${#createTableArray3[@]} ; i++ ))
+                                                                do
+                                                                        createTableArray4+=${createTableArray3[$i]}",";
+                                                                done
+                                                                if [ "$TRUNCATE_APPEND" == "TRUNCATE" ]; then
+
+                                                                        echo "$createTableArray4"
+
+                                                                        CreateTableFinal=`echo "${createTableArray4/%,/}"`
+                                                                        echo $CreateTableFinal
+                                                                        echo "Create Table here"
+                                                                        beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "SELECT * FROM ${TARGET_HIVE_TABLE} LIMIT 1;"
+									#spark_program_func "SELECT * FROM ${TARGET_HIVE_TABLE} LIMIT 1"
+                                                                        if [ $? != 0 ]; then
+                                                                                echo "INFO: ${TARGET_HIVE_TABLE} table doesn't exists in Hive."
+
+                                                                                echo "INFO: Create target temp table ${TARGET_HIVE_TABLE_TEMP} in Hive with same structure as source table"
+                                                                                echo "INFO: beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e create table ${TARGET_HIVE_TABLE} (${CreateTableFinal}) partitioned by (${PARTITION_COLUMNS}) stored as parquet"
+                                                                                beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "create table ${TARGET_HIVE_TABLE} (${CreateTableFinal}) partitioned by (${PARTITION_COLUMNS}) stored as parquet;"
+										#spark_program_func "create table ${TARGET_HIVE_TABLE} (${CreateTableFinal}) partitioned by (${PARTITION_COLUMNS}) stored as parquet"
+										impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${TARGET_HIVE_TABLE};"
+
+                                                                        else
+                                                                                #partition_exists=`beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "show partitions ${TARGET_HIVE_TABLE}"`
+										partition_exists=`impala-shell -k -i ${IMPALA_SHELL} -B -q "show partitions ${TARGET_HIVE_TABLE};" --quiet`
+                                                                                if [ "$partition_exists" ]; then
+                                                                                        echo "Partition exists $partition_exists"
+                                                                                else
+                                                                                        beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "drop table ${TARGET_HIVE_TABLE}"
+											#spark_program_func "drop table ${TARGET_HIVE_TABLE}"
+											impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${TARGET_HIVE_TABLE};"
+                                                                                        beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "create table ${TARGET_HIVE_TABLE} (${CreateTableFinal}) partitioned by (${PARTITION_COLUMNS}) stored as parquet;"
+											#spark_program_func "create table ${TARGET_HIVE_TABLE} (${CreateTableFinal}) partitioned by (${PARTITION_COLUMNS}) stored as parquet"
+											impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${TARGET_HIVE_TABLE};"
+                                                                                fi
+                                                                                if [ "$DROP_PARTITION_WITH_VALUE" ]; then
+
+                                                                                        echo "INFO: ${TARGET_HIVE_TABLE_P2} exists in Hive. drop this table $DROP_PARTITION_WITH_VALUE"
+                                                                                        beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "alter table ${TARGET_HIVE_TABLE} DROP IF EXISTS PARTITION ${DROP_PARTITION_WITH_VALUE};"
+											#spark_program_func "alter table ${TARGET_HIVE_TABLE} DROP IF EXISTS PARTITION ${DROP_PARTITION_WITH_VALUE}"
+											impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${TARGET_HIVE_TABLE};"
+                                                                                fi
+                                                                        fi
+                                                                fi
+                                                        #fi
+
+
+
+                                                                ###################INSERTION############################
+
+                                                                for element5 in "${createTableArray3[@]}"
+                                                                do
+                                                                        IFS=' ' read -r -a StrCmp3 <<< "$element5"
+                                                                        InsertTableArray+="${StrCmp3[0]}"",";
+                                                                done
+                                                                echo "$InsertTableArray"
+
+                                                                InsertTable="$InsertTableArray""$InsertTableString"
+                                                                InsertTableFinal=`echo "${InsertTable/%,/}"`
+                                                                InsertPartitionColumn=`echo "${InsertTableString/%,/}"`
+                                                                echo "$InsertTableFinal"
+                                                                #echo "$InsertPartitionColumn"
+
+                                                                #echo "beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e SET hive.exec.dynamic.partition = true;"
+
+                                                              # beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} -e "set hive.exec.dynamic.partition=true;"
+
+                                                                #beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} -e "set hive.exec.dynamic.partition.mode=nonstrict;"
+
+                                                                #tgt_table_cnt_master_before=`beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "select count(*) from ${TARGET_HIVE_TABLE};" `
+								tgt_table_cnt_master_before=`impala-shell -k -i ${IMPALA_SHELL} -B -q "select count(*) from ${TARGET_HIVE_TABLE};" --quiet`
+
+                                                                echo "INFO:set hive.exec.dynamic.partition.mode=nonstrict;  insert into table ${TARGET_HIVE_TABLE} partition(${InsertPartitionColumn}) select ${InsertTableFinal} from ${STAGE_HIVE_TABLE}; "
+                                                                #beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "set hive.exec.dynamic.partition=true;set hive.exec.dynamic.partition.mode=nonstrict;insert into table ${TARGET_HIVE_TABLE} partition(${InsertPartitionColumn}) select ${InsertTableFinal} from ${STAGE_HIVE_TABLE};set hive.exec.dynamic.partition.mode=strict;"
+								spark_program_func "set hive.exec.dynamic.partition=true;set hive.exec.dynamic.partition.mode=nonstrict;insert into table ${TARGET_HIVE_TABLE} partition(${InsertPartitionColumn}) select ${InsertTableFinal} from ${STAGE_HIVE_TABLE};set hive.exec.dynamic.partition.mode=strict;"
+								impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${TARGET_HIVE_TABLE};"
+								#spark_program_func "set hive.exec.dynamic.partition.mode=nonstrict"
+								#spark_program_func "insert into table ${TARGET_HIVE_TABLE} partition(${InsertPartitionColumn}) select ${InsertTableFinal} from ${STAGE_HIVE_TABLE}"
+								#spark_program_func "set hive.exec.dynamic.partition.mode=strict"
+                                                                #beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} -e "set hive.exec.dynamic.partition.mode=strict;"
+                                                                tgt_table_cnt_after=`beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "select count(*) from ${TARGET_HIVE_TABLE};" `
+                                                                tgt_table_cnt_master=$(expr "$tgt_table_cnt_after" - "$tgt_table_cnt_master_before")
+                                                                echo "$tgt_table_cnt_master"
+                                                                #beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "mksc repair ${TARGET_HIVE_TABLE};"
+                                                                ########################################################
+
+                                                        elif [ "$SOURCE_PULL_REQUIRE_TARGET_VALUE_IND" == "Y" ]; then
+                                                                                        echo "INFO: REFINE TABLE COUNT : select count(*) from ${TARGET_HIVE_TABLE} where ${INCREMENT_HIVE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} ${increment_pull_value};"
+                                                                                                        #beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "use ${TARGET_HIVE_DB};insert into table ${TARGET_HIVE_TABLE} select * from ${STAGE_HIVE_TABLE};"
+											spark_program_func "use ${TARGET_HIVE_DB}"
+											spark_program_func "insert into table ${TARGET_HIVE_TABLE} select * from ${STAGE_HIVE_TABLE}"
+											impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${TARGET_HIVE_TABLE};"
+                                                                                                        #tgt_table_cnt_master=`beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "select count(*) from ${TARGET_HIVE_TABLE} where ${INCREMENT_HIVE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}';" `
+											tgt_table_cnt_master=`impala-shell -k -i ${IMPALA_SHELL} -B -q "select count(*) from ${TARGET_HIVE_TABLE} where ${INCREMENT_HIVE_COLUMN_NAME} ${INCREMENT_SOURCE_TARGET_COMPARATOR} '${increment_pull_value}';" --quiet`
+
+echo "INFO : REFINED_TABLE_CNT = ${tgt_table_cnt_master}"
+
+                                                                                        else
+                                                        TARGET_HIVE_TABLE_TEMP="${TARGET_HIVE_TABLE}_TEMP"
+                                                       beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "SELECT * FROM ${TARGET_HIVE_TABLE_TEMP} LIMIT 1;"
+							#spark_program_func "SELECT * FROM ${TARGET_HIVE_TABLE_TEMP} LIMIT 1"
+                                                        if [ $? != 0 ]; then
+                                                                        echo "INFO: ${TARGET_HIVE_TABLE_TEMP} table doesn't exists in Hive"
+
+                                                        else
+                                                                        echo "INFO: ${TARGET_HIVE_TABLE_TEMP} exists in Hive. drop this table"
+                                                                        #beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "drop table ${TARGET_HIVE_TABLE_TEMP};"
+									spark_program_func "drop table ${TARGET_HIVE_TABLE_TEMP}"
+									impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${TARGET_HIVE_TABLE_TEMP};"
+                                                        fi
+
+                                                        echo "INFO: Create target temp table ${TARGET_HIVE_TABLE_TEMP} in Hive with same structure as source table"
+                                                        beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "create table ${TARGET_HIVE_TABLE_TEMP} stored as parquet as select * from ${STAGE_HIVE_TABLE};"
+							#spark_program_func "create table ${TARGET_HIVE_TABLE_TEMP} stored as parquet as select * from ${STAGE_HIVE_TABLE}"
+							 impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${TARGET_HIVE_TABLE_TEMP};"
+
+                                                        TARGET_HIVE_TABLE_P2="${TARGET_HIVE_TABLE}_P2"
+                                                        beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "SELECT * FROM ${TARGET_HIVE_TABLE_P2} LIMIT 1;"
+							#spark_program_func "SELECT * FROM ${TARGET_HIVE_TABLE_P2} LIMIT 1"
+                                                        if [ $? != 0 ]; then
+                                                                        echo "INFO: ${TARGET_HIVE_TABLE_P2} table doesn't exists in Hive."
+                                                        else
+                                                                        echo "INFO: ${TARGET_HIVE_TABLE_P2} exists in Hive. drop this table"
+                                                                        #beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "drop table ${TARGET_HIVE_TABLE_P2};"
+									spark_program_func "drop table ${TARGET_HIVE_TABLE_P2}"
+									impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${TARGET_HIVE_TABLE_P2};"
+                                                        fi
+
+                                                        TARGET_HIVE_TABLE_P1="${TARGET_HIVE_TABLE}_P1"
+                                                        beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "SELECT * FROM ${TARGET_HIVE_TABLE_P1} LIMIT 1;"
+							#spark_program_func "SELECT * FROM ${TARGET_HIVE_TABLE_P1} LIMIT 1"
+                                                        if [ $? != 0 ]; then
+                                                                        echo "INFO: ${TARGET_HIVE_TABLE_P1} table doesn't exists in Hive."
+                                                        else
+                                                                        beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "use ${TARGET_HIVE_DB};alter table ${TARGET_HIVE_TABLE_P1} rename to ${TARGET_HIVE_TABLE_P2};"
+									#spark_program_func "use ${TARGET_HIVE_DB};alter table ${TARGET_HIVE_TABLE_P1} rename to ${TARGET_HIVE_TABLE_P2}"
+									#impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${TARGET_HIVE_TABLE_P2};"
+                                                        fi
+
+                                                        beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "SELECT * FROM ${TARGET_HIVE_TABLE} LIMIT 1;"
+							#spark_program_func "SELECT * FROM ${TARGET_HIVE_TABLE} LIMIT 1"
+                                                        if [ $? != 0 ]; then
+                                                                        echo "INFO: ${TARGET_HIVE_TABLE} table doesn't exists in Hive."
+                                                        else
+                                                                        beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "use ${TARGET_HIVE_DB};alter table ${TARGET_HIVE_TABLE} rename to ${TARGET_HIVE_TABLE_P1};"
+									#spark_program_func "use ${TARGET_HIVE_DB};alter table ${TARGET_HIVE_TABLE} rename to ${TARGET_HIVE_TABLE_P1}"
+									#impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${TARGET_HIVE_TABLE_P1};"
+                                                        fi
+
+                                                        beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "use ${TARGET_HIVE_DB};alter table ${TARGET_HIVE_TABLE_TEMP} rename to ${TARGET_HIVE_TABLE};"
+							#spark_program_func "use ${TARGET_HIVE_DB};alter table ${TARGET_HIVE_TABLE_TEMP} rename to ${TARGET_HIVE_TABLE}"
+							impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${TARGET_HIVE_TABLE};"
+                                                        #tgt_table_cnt_master=`beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "select count(*) from ${TARGET_HIVE_TABLE};" `
+							tgt_table_cnt_master=`impala-shell -k -i ${IMPALA_SHELL} -B -q "select count(*) from ${TARGET_HIVE_TABLE};" --quiet`
+                                                                                        fi
+                                        fi
+
+
+                                        echo -e "\n----- Step 7: Stage vs target Hive Table Validations -----"
+                                        echo "INFO: Starting validation checks ..."
+
+                                        src_table_cnt_stg=`beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "select count(*) from ${STAGE_HIVE_TABLE};" `
+					#src_table_cnt_stg=`impala-shell -k -i ${IMPALA_SHELL} -B -q "select count(*) from ${STAGE_HIVE_TABLE};" --quiet`
+
+                                        if [ $? != 0 ]; then
+                                                                                                        echo "INFO: ${TARGET_HIVE_TABLE} table doesn't exists in Hive"
+                                                                                                        tgt_table_cnt_master=0
+                                                                        else
+                                                                                                        echo "INFO: ${TARGET_HIVE_TABLE} exists in Hive."
+                                        fi
+
+                                        if [ "${src_table_cnt_stg}" == "${tgt_table_cnt_master}" ]; then
+                                                                        echo -e "\nINFO: The count of records matches between ${STAGE_HIVE_TABLE} and ${TARGET_HIVE_TABLE} in Hive"
+                                                                        END_TIME=`date +'%Y-%m-%d %H:%M:%S'`
+                                                                        STATUS="SUCCEEDED"
+                                                                        echo "INFO: Inserting an entry into audit table..."
+                                                                        beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "insert into ${AUDIT_TABLE} values (${PROCESS_ID},'${PROCESS_DESC}','${JOB_NAME}','${DATA_PROV_NAME}','${DATA_SET}','${STAGE_HIVE_DB}','${TARGET_HIVE_DB}','${STAGE_HIVE_TABLE}','${TARGET_HIVE_TABLE}','${STRT_TIME}','${END_TIME}',${src_table_cnt_stg},${src_table_cnt_stg},${tgt_table_cnt_master},'${STATUS}','');"
+									#spark_program_func "insert into ${AUDIT_TABLE} values (${PROCESS_ID},'${PROCESS_DESC}','${JOB_NAME}','${DATA_PROV_NAME}','${DATA_SET}','${STAGE_HIVE_DB}','${TARGET_HIVE_DB}','${STAGE_HIVE_TABLE}','${TARGET_HIVE_TABLE}','${STRT_TIME}','${END_TIME}',${src_table_cnt_stg},${src_table_cnt_stg},${tgt_table_cnt_master},'${STATUS}','')"
+									#impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${AUDIT_TABLE};"
+                                                                        echo "INFO: An entry has been inserted into audit table"
+                                        else
+                                                                        echo -e "\nINFO: The count of records doesn't match between ${STAGE_HIVE_TABLE} and ${TARGET_HIVE_TABLE} in Hive"
+                                                                        echo "INFO: Please check for the log for more details. "
+                                                                        STATUS="FAILED"
+                                                                        ERR_DSC="ERROR: The count of records in stagte and target Hive is not matching"
+                                                                        END_TIME=`date +'%Y-%m-%d %H:%M:%S'`
+                                                                        echo "INFO: Inserting an entry into audit table... ${AUDIT_TABLE}"
+                                                                        beeline -u "${BELINECONNECTIONSTRING}" --hiveconf mapred.job.queue.name=${queueName} --showHeader=false --outputformat=tsv2 -e "insert into ${AUDIT_TABLE} values (${PROCESS_ID},'${PROCESS_DESC}','${JOB_NAME}','${DATA_PROV_NAME}','${DATA_SET}','${STAGE_HIVE_DB}','${TARGET_HIVE_DB}','${STAGE_HIVE_TABLE}','${TARGET_HIVE_TABLE}','${STRT_TIME}','${END_TIME}',${src_table_cnt_stg},${tgt_table_cnt_master},${tgt_table_cnt_master},'${STATUS}','${ERR_DSC}');"
+									#spark_program_func "insert into ${AUDIT_TABLE} values (${PROCESS_ID},'${PROCESS_DESC}','${JOB_NAME}','${DATA_PROV_NAME}','${DATA_SET}','${STAGE_HIVE_DB}','${TARGET_HIVE_DB}','${STAGE_HIVE_TABLE}','${TARGET_HIVE_TABLE}','${STRT_TIME}','${END_TIME}',${src_table_cnt_stg},${tgt_table_cnt_master},${tgt_table_cnt_master},'${STATUS}','${ERR_DSC}')"
+									impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${AUDIT_TABLE};"
+                                                                        exit 1
+                                        fi
+
+                                        echo -e "\n--------------------------------------------------------------------------------------"
+                                        echo "INFO: Data from $SRC_TABLE has been imported successfully to $STAGE_HIVE_TABLE"
+                                        echo "INFO: Script Execution has been completed Successfully"
+                                        echo "-------------------------------------------------------------------------------------------"
+
+                        else
+
+
+                                                                        echo -e "\n INFO: Import has been completed successfully to the below path ${TGTFILEPATH_TS}"
+                                                                        echo "INFO: Total Number of source records read from ${SRC_TABLE}: $src_table_cnt"
+                                                                        echo -e "\n--------------------------------------------------------------------------------------"
+                                                                        echo "INFO: Data from $SRC_TABLE has been imported successfully to HDFS"
+
+
+                        fi
+						
+
+	fi
+
+if [ "$IS_TARGET_TABLE" == "Y" ] && [ -n "$IMPALA_SHELL" ]; then
+        echo "impala-shell -k -i ${IMPALA_SHELL} -q invalidate metadata ${TARGET_HIVE_TABLE};"
+        impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${TARGET_HIVE_TABLE};"
+        impala-shell -k -i ${IMPALA_SHELL} -q "compute stats ${TARGET_HIVE_TABLE};"
+	impala-shell -k -i ${IMPALA_SHELL} -q "invalidate metadata ${AUDIT_TABLE};"
+        echo "INFO:Invalidate Metadata executed"
+fi
+
+echo "INFO: Script Execution has been completed Successfully"
+echo "-------------------------------------------------------------------------------------------"

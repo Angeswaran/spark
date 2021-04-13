@@ -1,0 +1,36 @@
+'''
+#Author         : Abbvie CTS BigData Team
+#Program        : sqoopTargetTableCreate.py
+#Desc           : Create target tables from stage table for Sqoop import process
+#               :
+#Parameter      :
+# example       : nohup spark-submit --master yarn-cluster --executor-memory 50G --num-executors 8 load_table_for_ambassador_interaction.py &
+#Version        : 1.0
+#
+'''
+
+import sys
+from pyspark import SparkConf, SparkContext
+from pyspark.sql import HiveContext
+
+QUERY_TO_EXECUTE = sys.argv[1]
+conf = (SparkConf().setAppName("sqoopTargetTableCreate"))
+sc = SparkContext(conf=conf)
+print('before spark process  -')
+hive_sql = HiveContext(sc)
+
+var_incremental_command = QUERY_TO_EXECUTE
+print(var_incremental_command)
+check_semicolon = var_incremental_command.split(';')
+print(check_semicolon)
+for sQuery in check_semicolon:
+	if(sQuery !=''):
+		sqlDF = hive_sql.sql(sQuery)
+		print(sQuery)
+
+#if sqlDF.count() < 1:
+#	df = 0
+#else:
+#	df = sqlDF.collect()[0][0]
+print('After spark process  -')
+

@@ -1,0 +1,68 @@
+#!/bin/bash
+
+##############################################################################
+#Author         : Abbvie HCP360 Dev Team
+#Program        : cdlh_sqoop_run_autosys_script.sh
+#Desc           : Import data from Teradata to HDFS Hive table
+#Version        : 1.0
+##############################################################################
+
+PARMFILE=$1
+SCRIPTPROPERTYFILE=$2
+echo "Parameter File :"${PARMFILE}
+echo "Property File :"${SCRIPTPROPERTYFILE}
+CURRDIR=`pwd`
+
+TIMESTAMP=`date +'%y%m%d_%H%M%S'`
+STRT_TIME=`date +'%Y-%m-%d %H:%M:%S'`
+
+BELINECONNECTIONSTRING=`cat $SCRIPTPROPERTYFILE | grep "BELINECONNECTIONSTRING=" | cut -c24-`
+KEYTAB=`cat $SCRIPTPROPERTYFILE | grep "KEYTAB=" | cut -d "=" -f 2`
+PRINCIPAL=`cat $SCRIPTPROPERTYFILE | grep "PRINCIPAL=" | cut -d "=" -f 2`
+SQOOPSCRIPTNAME=`cat $SCRIPTPROPERTYFILE | grep "SQOOPSCRIPTNAME=" | cut -d "=" -f 2`
+SQOOPSCRIPTPATH=`cat $SCRIPTPROPERTYFILE | grep "SQOOPSCRIPTPATH=" | cut -d "=" -f 2`
+EXCEUTIONPATH=`cat $SCRIPTPROPERTYFILE | grep "EXCEUTIONPATH=" | cut -d "=" -f 2`
+QUEUENAME=`cat $SCRIPTPROPERTYFILE | grep "QUEUENAME=" | cut -d "=" -f 2`
+MASTERTYPE=`cat $SCRIPTPROPERTYFILE | grep "MASTERTYPE=" | cut -d "=" -f 2`
+JVMSIZE=`cat $SCRIPTPROPERTYFILE | grep "JVMSIZE=" | cut -d "=" -f 2`
+SPARKOPTS=`cat $SCRIPTPROPERTYFILE | grep "SPARKOPTS=" | cut -d "=" -f 2`
+PYFILENAME=`cat $SCRIPTPROPERTYFILE | grep "PYFILENAME=" | cut -d "=" -f 2`
+IMPALA_SHELL=`cat $SCRIPTPROPERTYFILE | grep "IMPALA_SHELL=" | cut -d "=" -f 2`
+NUM_EXECUTORS=`cat $SCRIPTPROPERTYFILE | grep "NUM_EXECUTORS=" | cut -d "=" -f 2`
+EXECUTOR_CORES=`cat $SCRIPTPROPERTYFILE | grep "EXECUTOR_CORES=" | cut -d "=" -f 2`
+EXECUTOR_MEMORY=`cat $SCRIPTPROPERTYFILE | grep "EXECUTOR_MEMORY=" | cut -d "=" -f 2`
+DRIVER_MEMORY=`cat $SCRIPTPROPERTYFILE | grep "DRIVER_MEMORY=" | cut -d "=" -f 2`
+
+
+
+
+echo "Sqoop script name :"${SQOOPSCRIPTNAME}
+echo "Sqoop script path :"${SQOOPSCRIPTPATH}
+
+kinit -kt ${KEYTAB} ${PRINCIPAL}
+
+hdfs dfs -get ${SQOOPSCRIPTPATH}/${SQOOPSCRIPTNAME} ${EXCEUTIONPATH}/${SQOOPSCRIPTNAME} >/dev/null 2>&1
+if [[ $? -ne 0 ]]; then
+    echo "INFO: ${EXCEUTIONPATH}/${SQOOPSCRIPTNAME} already exists..."
+fi
+
+hdfs dfs -get ${SQOOPSCRIPTPATH}/${PYFILENAME} ${EXCEUTIONPATH}/${PYFILENAME} >/dev/null 2>&1
+if [[ $? -ne 0 ]]; then
+    echo "INFO: ${EXCEUTIONPATH}/${PYFILENAME} already exists..."
+fi
+
+echo "sh ${EXCEUTIONPATH}/${SQOOPSCRIPTNAME} ${PARMFILE} ${BELINECONNECTIONSTRING} ${KEYTAB} ${PRINCIPAL} ${QUEUENAME} ${EXCEUTIONPATH}/${PYFILENAME} ${IMPALA_SHELL} ${NUM_EXECUTORS} ${EXECUTOR_CORES} ${EXECUTOR_MEMORY} ${DRIVER_MEMORY} ${MASTERTYPE} ${JVMSIZE}"
+
+sh ${EXCEUTIONPATH}/${SQOOPSCRIPTNAME} ${PARMFILE} ${BELINECONNECTIONSTRING} ${KEYTAB} ${PRINCIPAL} ${QUEUENAME} ${EXCEUTIONPATH}/${PYFILENAME} ${IMPALA_SHELL} ${NUM_EXECUTORS} ${EXECUTOR_CORES} ${EXECUTOR_MEMORY} ${DRIVER_MEMORY} ${MASTERTYPE} ${JVMSIZE}
+
+#sh ${EXCEUTIONPATH}/${SQOOPSCRIPTNAME} ${PARMFILE} ${BELINECONNECTIONSTRING} ${KEYTAB} ${PRINCIPAL} ${QUEUENAME} ${IMPALA_SHELL}
+
+rm ${EXCEUTIONPATH}/${SQOOPSCRIPTNAME} >/dev/null 2>&1
+if [[ $? -ne 0 ]]; then
+    echo "INFO: ${EXCEUTIONPATH}/${SQOOPSCRIPTNAME} already removed..."
+fi
+rm ${EXCEUTIONPATH}/${PYFILENAME} >/dev/null 2>&1
+if [[ $? -ne 0 ]]; then
+    echo "INFO: ${EXCEUTIONPATH}/${PYFILENAME} already removed..."
+fi
+
