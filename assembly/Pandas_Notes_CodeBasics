@@ -1,0 +1,722 @@
+Python Pandas:- 
+Data analytics or Data Science is a process of analysing the large data set to get the answer on questions related to that data Set.
+
+Pandas is a python modeule which make data science or data analytics very Effective.
+
+Ex:- I have set of data, need to do aggregate function like max, avg etc.. when you use Excel, it will be good for small amount of data. It would be difficult to analyse for large dataset.
+
+For that, we can write python code to solve this. but we have to write lot of code to bring the result. But with Pandas code, can solve this by very small amount of code.
+
+import pandas as pd
+df = pd.read_csv("C:\\users\745151\test.csv")
+df
+
+After loaded into data frame, you can result as Table when you asked to display..
+
+df["marks"].max()
+
+df["EST"][df["Events"] == "Rain"]
+
+df["marks"].mean()
+
+process of cleansing the data is called as Data munging or Data wrangling.
+
+df[["score", "release_year"]] --> Select multiple columns.
+
+Pandas deals with Three data structure:-
+
+Series -> Homogeneous data, Size Immutable, Values of Data Mutable
+Dataframe --> Collection of Series, Size - Mutable with Hetro genious typed columns.
+Panel --> Collection of Dataframe, Size Mutable.
+
+Nan will be present in dataframe for empty value in Excel.
+
+df.fillna(0, inplace=True) --> Changes in same dataset.
+
+Pandas comes with Anaconda Distribution.
+
+pip install pandas --> install pandas Module.
+
+once install go to cmd --> import pandas as pd 
+
+---------------------------------------------------------------
+
+Dataframe Basics:-
+-----------------------------
+ 
+Data frame is a main object in Pandas. it is used to Represent data in Rows and Columns (Tabular data)
+
+Topics:-
+
+1. Creating Dataframe
+2. Dealing with Rows and Columns
+3. OPerations: min, max, std, describe
+4. Conditional Selection
+5. set_index
+
+import pandas as pd 
+df = pd.read_csv("data.csv") --> Successfully created dataframe
+df
+
+Create Dataframe using Python Dictionary.
+import pandas as pd
+
+df = pd.DataFrame(dict_Sample)
+
+df.shape --> Represents the No of rows and columns
+
+Rows, columns = df.shape
+
+(6,4)
+
+df.head(2) --> prints top 2 records. (Default 5)
+
+df.tail(2) --> Prints least 2 records.
+
+Data Slicing:-
+df[2:5] --> Includes 2nd Row, Not included 5th row.
+
+df[:] --> Everything
+
+df.columns --> Prints all columns
+
+df.Date or df["Date"] --> Print Individual columns values.
+
+type(df["Event"])
+
+Columns in Dataframe are basically type of Pandas Series.
+
+df[["id","name"]] --> #print Multiple columns
+
+df["marks"].max() --> min, max, mean (Average), std(Standard Deviation), 
+
+df.describe() --> Going to print the statistics of the dataframe like count, mean, std, min, max etc.. (Prints data for which are the columns are Interger type)
+
+Conditional Selection:-
+---------------------
+df[df.Temp>=32] --> Prints the data where Temp greater than 32.
+
+df[df.Temp ==df["Temp"].max()] --> Prints the data where Temp is max.
+
+df["day"][df[df.Temp ==df["Temp"].max()] --> Prints only one columns with where condition.
+
+df[['day','Temp']][df[df.Temp ==df["Temp"].max()] --> Prints Multiple columns with where condition.
+
+Pandas Series Operation for more details 
+
+Set_Index:-
+------------
+df.index --> Print the default index like 0 to 10 something.
+
+(To modify the original dataset, have to give inplace = True)
+
+df.set_Index('day', inplace=True) --> Set index based on day
+
+df.loc['2019-05-01'] --> Prints the rows where day = 2019-05-01
+
+df.reset_index(inplace = True) --> Revert to Original dataset.
+
+Index columms - no need to have unique rows. we can set to any columns we need.
+
+============================================
+3. Different ways of Creating dataFrame:-
+============================================
+1. using CSV
+2. Using Excel
+3. Using Python Dictionary
+4. From list of Tuples
+5. From list of dictionaries
+
+import pandas as pd
+df = pd.read_csv("c:\\data\data.csv") --> Read csv into Dataframe
+
+df = pd.read_excel("data.xlsx","sheet1")
+df
+
+dict1 = {
+	'id' = [1,2,3,4],  --> Keys and Row values
+	'name' = ['angesh','jamuna','gowtham'],
+	'dept' = ['EEE','CSE','EIE']
+}
+df = pd.DataFrame(dict1) --> Argumennts
+
+ListofTuples = [
+(1,'angesh','EEE'), --> Rows
+(2,'jamuna','CSE'),
+(3,'gowtham','EIE')
+]
+
+df = pd.DataFrame(ListofTuples, columns=["id","name","dept"])
+
+listofdictionaries = [
+{'id'=1, 'name'='angesh','dept'='EEE'}, --> Column and value
+{'id'=2, 'name'='jamuna','dept'='CSE'}
+{'id'=3, 'name'='gowtham','dept'='EIE'}
+]
+
+df.DataFrame(listofdictionaries)
+
+Search Pandas IO --> Ways of Creating dataframe
+
+===========================================================
+4. Read and Write CSV and Excel File in Pandas
+===========================================================
+import pandas as pd
+
+df = pd.read_csv("data.csv")
+
+If we have more headers --> Way of Skipping rows
+
+df = pd.read_csv("data.csv",skiprows=1)
+or
+df = pd.read_csv("data.csv",header=1)
+
+Search pandas csv --> All methods are available
+
+If you dont have headera nd manually create header below,
+
+df = pd.read_csv("data.csv",header=None) --> Automatically generated columns as 1 2 3 4
+
+df = pd.read_csv("data.csv",header=None, names=["id","name","dept"])
+
+Read only few rows -->
+
+df = pd.read_csv("data.csv", nrows=3) --> Exclusing headers
+
+if want to Replace NaN for any row values in entire CSV file or Excel Values,
+
+df = pd.read_csv("data.csv", na_values=["not available", "n.a"])
+
+If we want to Replace NaN for particular columns, -->
+
+df = pd.read_csv("data.csv", na_values = {
+	'id' : ["not available", "n.a"],
+	"name" : ["not available", "n.a",-1]
+	}
+)
+
+What is NaN????
+
+----------------
+Write CSV:-
+------------
+df.to_csv("new.csv") --> By default, It writes the Index, if you dont want,
+
+df.to_csv("new.csv", index=False)
+
+Writing only few columns,
+
+df.to_csv("new.csv", index=False, columns=['id','name'])
+
+Skipping the Exporting header,
+
+df.to_csv("new.csv", index=False, header=False)
+
+---------------
+Read Excel:-
+--------------
+df = pd.read_excel("data.xlsx", "Sheet1")
+
+If you want to replace any content in any columns, create new function to do,
+
+def convert_id_cell(cell):
+	if(cell == "n.a"):
+		return "Sam Walton"
+	return cell
+
+def convert_name_cell(cell):
+	if(cell == "not available"):
+		return "None"				--> prints NaN in df
+	return cell
+
+df = pd.read_excel("data.xlsx", "Sheet1", converters = {
+	"dept" : convert_cell,
+	"name" : convert_name_cell
+})
+
+
+-----------------------
+Write Excel File:-
+----------------------
+df.to_excel("new.xlsx", sheet_name = "data")
+
+df.to_excel("new.xlsx", sheet_name = "data", index=False)
+
+If you want to Write from 2nd row and 2nd columns,
+
+df.to_excel("new.xlsx", sheet_name = "data", index=False, startrow=2, startcol=2)
+
+Write two df into two different sheets of the same Excel,
+
+dict_student {
+	'id' = [1,2,3,4],  --> Keys and Row values
+	'name' = ['angesh','jamuna','gowtham'],
+	'dept' = ['EEE','CSE','EIE']
+}
+
+dict_department = {
+	'code': ['EEE', 'CSE', 'EIE'],
+	'Name' : ['Electrical','Computer','Instrument']
+}
+
+df_student = pd.DataFrame(dict_student)
+df_department = pd.DataFrame(dict_department)
+
+with pd.ExcelWriter("data.xlsx") as Writer:
+	df_student.to_excel(Writer, sheet_name="Student")
+	df_department.to_excel(Writer,sheet_name="department"))
+
+Search Read csv pandas --> 
+
+==================================================================
+5. How to Handle Missing data:- Using fillna, dropna, interpolate
+==================================================================
+1. fillna --> To fill missing values in different ways.
+2. interpolate --> To make a guess on missing values using interpolation.
+3. dropna --> drop rows with missing values.
+
+import pandas as pd
+df = pd.read_csv("data.csv")
+
+type(df.day[0]) --> prints type (str or int)
+
+converting column values, 
+
+df = pd.read_csv("data.csv", parse_dates = ['day'])
+
+df.set_index('day')
+
+new_df = df.fillna(0) --> Everything is changed.
+
+new_df = df.fillna({
+	'Temp' : 0,
+	'Windspeed': 0,
+	'event': 'no event'
+})
+
+Instead of putting dummy values, just carry forward previous values to dummy values,
+
+new_df = df.fillna(method="ffill") --> Forward fill
+
+new_df = df.fillna(method="bfill") --> backward fill
+
+Search pandas fillna --> 
+
+new_df = df.fillna(method = "bfill", axis = "columns") --> Replace the values in Horizontally from next column to current column.
+
+new_df = df.fillna(method="ffill", limit=1) --> carry forward the value to only one, not for two continously.
+
+----------------
+Interpolate:- Linear Interpolation
+--------------
+new_df = df.interpolate() --> Default Method is Linear. Puts the Middle value of those two rows.
+
+Search Pandas.dataframe.interpolate 
+
+new_df = df.interpolate(method="time")  --> Prints near Value by 3rd value..
+
+----------------
+dropna:- 
+------------
+new_df = df.dropna() --> Drop the rows where rows are having any NaN value.
+
+wants to drop rows where all columns are having NaN only.
+
+new_df = df.dropna(how="all") 
+
+if wants to keep rows where any one NaN is there. drop more than NaN values.
+
+new_df = df.dropna(thresh=1) (One valid values)
+
+-----------------------------
+How to bring missing rows:-
+------------------------------
+
+dt = ps.date_range("01-01-2019","01-14-2019")
+idx = pd.DateTimeIndex(dt)
+df = df.reindex(idx)
+df
+
+================================================================
+How to use Replace method for missing data in Python Pandas:-
+================================================================
+
+import pandas as pd
+import numpy as nm
+
+df = pd.read_csv("data.csv")
+df
+
+new_df = df.replace(-99999,np.NaN) --> replace all "-99999" to NaN in all places of the file.
+
+if you have more values to replace than,
+
+new_df = df.replace([-99999,-88888],np.NaN)
+
+replace values based on Specific columns,
+
+new_df = df.replace({
+	"Temp": -99999,
+	"WindSpeed": -88888
+}, np.NaN)
+
+When you want to replace with other values instead of NaN,
+
+new_df = df.replace({
+	-99999 : np.NaN,
+	'No event' : 'Sunny'
+}
+)
+
+If you want to replace with column value like 30mph --> I need only 30..
+
+new_df = df.replace('[A-Za-z]','',regex=True)
+
+new_df = df.replace({
+	'Temp': '[A-Za-z]',
+	'WindSpeed' : '[A-Za-z]'
+},'',regex=True)
+
+Replace of column values with Numbers,
+
+df = pd.DataFrame({
+	'Score' : ['exceptional','average','good','poor','exceptional'],
+	'Student_Nmae' : ['AA','BB','CC','DD','EE']
+})
+
+df.replace(['poor','average','good','exceptional'],[1,2,3,4])
+
+=========================================================
+7. Group By - Split Apply Combine:-
+===========================================
+1. Max Temp of each of cities.
+2. Find Average wind speed per city
+
+import pandas as pd
+df = pd.read_csv("data.csv")
+
+g = df.groupby('city')
+
+for city,city_df in g:
+	print(city)
+	print(city_df)
+
+g.get_group('mumbai')
+
+Select * from tbl_name group by city --> Similar to..
+
+g.max() --> Max Temp of each of cities.
+g.mean() --> Find Average wind speed per city
+
+Search --> Pandas Group by 
+
+===============================================
+8. Concat Dataframes:-
+=======================================
+Concat is used for join two or more dataframes.
+
+import pandas pd
+df = pd.read_csv()
+
+india_weather = pd.DataFrame(
+	'city' : ['Chennai','Mumbai','Delhi'],
+	'Temp' : [20,32,38],
+	'humidity' : [80,60,70]
+)
+
+us_weather = pd.DataFrame(
+	'city' : ['new york','Chicago','orlando'],
+	'Temp' : [10,16,20],
+	'humidity' : [30,40,50]
+)
+
+
+df = pd.concat([india_weather,us_weather])
+df
+
+df = pd.concat([india_weather,us_weather], ignore_index=True)
+
+Search Pandas Concat
+
+if you want group by and make naming as follows,
+
+df = pd.concat([india_weather,us_weather], keys=['india','us'])
+
+df.loc["india"] --> Prints only India Subset..
+
+Usually when you concat, appending the second dataframe as Rows,
+
+if you add column from Second dataframe, do as below,
+
+Temp_df = pd.DataFrame({
+	'city' : ['Chennai','Mumbai','Delhi'],
+	'Temp' : [20,32,38],
+},index[0,1,2])
+
+Win_Speed_df = pd.DataFrame({
+	'city' : ['Mumbai','Delhi'],
+	'winspeed' : [11,14],
+},index[1,2])
+
+df = pd.concat([Temp_df,Win_Speed_df], axis = 1)
+
+Index is used for align the rows from different datasets in concat operations.
+--------------------------------
+Join Dataset using Series:=
+--------------------------------
+Temp_df = pd.DataFrame({
+	'city' : ['Chennai','Mumbai','Delhi'],
+	'Temp' : [20,32,38],
+},index[0,1,2])
+
+s = pd.series([' Rain','Summer','Cool'],name='event')
+
+df = pd.concat([Temp_df,s],axis=1)
+
+==================================================
+9. Merge Dataframes:- (inner join)
+====================================
+import pandas as pd
+
+Temp_df = pd.DataFrame({
+	'city' : ['Chennai','Mumbai','Delhi'],
+	'Temp' : [20,32,38],
+})
+
+df2 = pd.DataFrame({
+	'city' : ['Chennai','Mumbai','Delhi'],
+	'humidity' : [20,32,38],
+})
+
+df = pd.merge(Temp_df,df2,on="city")
+
+based on join, it will perform the operations..
+
+What ever data is common, those records only to be fetched.
+
+Union of two datasets,  Outer join:- Union of two sets (Bring all records with Unique)
+
+df = pd.merge(Temp_df,df2,on="city", how="outer")
+
+Outer join:- Union of two sets (Bring all records with Unique)
+
+Search - pandas merge documentation 
+
+inner join :-
+
+df = pd.merge(Temp_df,df2,on="city", how="inner") --> fetch only common records from both the datasets.
+
+Left join:- (Fetch common records from both the datasets and remaining from left datasets.
+
+df = pd.merge(Temp_df,df2,on="city", how="left")
+
+Right join:- (Fetch common records from both the datasets and remaining from right datasets.
+
+df = pd.merge(Temp_df,df2,on="city", how="right")
+
+Indicator keyword is used for showing the data where it came from, left or right dataset?
+
+df = pd.merge(Temp_df,df2,on="city", how="right", indicator=True) (column name = _Merge )
+
+Suffixes --> When we have a common column in both data sets, then its displaying df1_x, df1_y, df2_x, df2_y as by default.
+
+But if you want to print suffixes as our defined one, have to use suffixes option.
+
+df3 = pd.merge(df1,df2,on="city",suffixes =("_left","_right))
+
+=============================================
+10. Pivot Table:-
+=============================================
+Pivot allows you to transform or Reshape the data. 
+
+	date		city		temperature	humidity
+0	5/1/2019	new york	65			56
+1	5/2/2019	new york	66			57
+2	5/3/2019	new york	67			58
+3	5/1/2019	mumbai		75			91
+4	5/2/2019	mumbai		76			92
+5	5/3/2019	mumbai		77			93
+6	5/1/2019	beijing		80			71
+7	5/2/2019	beijing		81			72
+8	5/3/2019	beijing		82			73
+
+
+For data analytics purpose, you want to transform the data like that,
+
+			Temperature					Humidity		
+city		beijing	mumbai	new york	beijing	mumbai	new york
+date						
+5/1/2019	80		75		65			71		91		56
+5/2/2019	81		76		66			72		92		57
+5/3/2019	82		77		67			73		93		58
+
+
+import pandas as pd
+df = pd.read_csv("data.csv")
+
+df.pivot(index="date", columns  = "city") --> Index (Rows) , columns (column level)..
+
+if you want to print only Humidity data, 
+
+df.pivot(index="date", columns  = "city", values = "Humidity")
+
+Pivot table: Pivot table is used to Summarize and Aggregate the data inside dataframe.
+
+df.pivot_table(index="city",columns="date") --> It will print the group and average of temperature per city. (Default --> mean)
+
+df.pivot_table(index="city",columns="date", aggfunc="sum") --> It will print the group and Sum of temperature per city.
+
+Search --> Numpy functions.
+
+df.pivot_table(index="city",columns="date", aggfunc="diff") or mean for Average.
+
+Search pandas pivot table --> 
+
+df.pivot_table(index="city",columns="date",mergins=True) --> It will print Average of the columns + additional average of result columns with column name as "All".
+
+Converting the String column into Datetime.
+
+df['date'] = pd.to_datetime(df['date'])
+
+After we can confirm by --> type(df['date'][0])
+
+If you want to find the Average Temp of March month at end of the month and Dec month,
+
+df.pivot_table(index = pd.Grouper(freq='M',key='date'),columns='city')
+
+=======================================
+11. Reshape dataframe using melt:-
+=======================================
+Melt is used to Transform or Reshape the data.
+
+Githup link - https://github.com/codebasics/py/blob/master/pandas/11_melt/pandas_melt_tutorial.ipynb
+
+import pandas as pd
+df = pd.read_csv("data.csv")
+
+df1 = pd.melt(df, id_vars = ["day"]) --> id_vars is nothing but Rows value of the dataset. with columns day, variable, value.
+
+We can filter the particular values to be printed,
+
+df1[df1["variable"] == "chicago"] --> prints only chicago records.
+
+if you want to replace the variable name and value name in result set,
+
+df1 = pd.melt(df, id_vars = ["day"], var_name = "city", value_name="temperature")
+
+Search Pandas melt 
+
+=============================================================
+12. Stack and UnStack:-
+==========================================================
+Git path :- https://github.com/codebasics/py/blob/master/pandas/12_stack/12_pandas_stack.ipynb
+
+Reshaping technique for dataFrame is called as stacking and Unstacking.
+
+if you have a two level of column headers (Metric and column headers). If you want to transpose the data into Row level is achieved by Stacking.
+
+import pandas as pd
+df = pd.read_excel("data.csv", header=[0,1])
+
+df.stack() --> takes the inner most level and transpose it.
+
+df.stack(level=0) --> remove first level and transpose it.
+
+Search pandas stack doc
+
+If you have any NaN values, then drop those rows, we can use dropna=True.
+
+If you want to reverse to original dataset, then use unstack method.
+
+df_stacked = df.stack()
+
+df_stacked.unstack()
+
+If you have 3 levels of column headers, then use, 
+
+import pandas as pd
+df = pd.read_excel("data.csv", header=[0,1,2])
+
+===============================================================================
+13. Crosstab:- (Cross tabulation or COntingency Table)
+==================================================================
+If you want to find the no of occurrence or group by of particular column. 
+
+import pandas as pd
+df = pd.read_excel("data.csv")
+
+pd.crosstab(df.Nationality, df.Handedness) --> Row and column
+
+Another argument "margin" is used for Total. (Both column and Row level)
+
+pd.crosstab(df.Nationality, df.Handedness, margins = True)
+
+If you want to pass more column to group, then pass it in array.
+
+pd.crosstab(df.Nationality, [df.sex, df.handedness], margins = True)
+
+pd.crosstab([df.Nationality,df.sex], [df.handedness], margins = True)
+
+======================================================================
+14. Pandas Time Series Analysis Part 1: DateTimeIndex and Resample.
+======================================================================
+Timeseries is a set of data points indexed in time order.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
